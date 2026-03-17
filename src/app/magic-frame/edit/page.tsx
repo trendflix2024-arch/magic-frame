@@ -136,7 +136,7 @@ export default function MagicFrameEditPage() {
                         transition={{ duration: 0.25 }}
                         className="max-w-sm mx-auto px-4 py-6 space-y-3"
                     >
-                        <p className="text-center text-sm font-medium text-slate-500 mb-5 break-keep">
+                        <p className="text-center text-base font-semibold text-slate-700 mb-6 break-keep">
                             어떤 방식으로 편집할까요?
                         </p>
 
@@ -146,26 +146,16 @@ export default function MagicFrameEditPage() {
                             transition={{ delay: 0, duration: 0.3 }}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => setSelectedTool('collage')}
-                            className="w-full bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm text-left"
+                            className="w-full bg-white rounded-2xl p-5 flex items-center gap-4 text-left border border-slate-100 shadow-sm active:scale-[0.98] transition-transform"
                         >
-                            <div className="bg-gradient-to-br from-violet-50 to-purple-100 px-5 pt-5 pb-3">
-                                <div className="grid grid-cols-2 gap-1.5">
-                                    <div className="h-16 rounded-xl bg-gradient-to-br from-violet-300 to-purple-400 opacity-80" />
-                                    <div className="h-16 rounded-xl bg-gradient-to-br from-indigo-200 to-blue-300 opacity-80" />
-                                    <div className="h-16 rounded-xl bg-gradient-to-br from-pink-200 to-rose-300 opacity-80" />
-                                    <div className="h-16 rounded-xl bg-gradient-to-br from-amber-200 to-orange-300 opacity-80" />
-                                </div>
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-200/70">
+                                <Layers size={24} className="text-white" />
                             </div>
-                            <div className="px-4 py-3.5 flex items-center gap-3">
-                                <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
-                                    <Layers size={16} className="text-white" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-black text-slate-800 text-sm">콜라주 메이커</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">최대 4장을 한 액자에 배치해요</p>
-                                </div>
-                                <ChevronRight size={15} className="text-slate-300 flex-shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-bold text-slate-900 text-[15px] leading-snug">콜라주 메이커</p>
+                                <p className="text-[13px] text-slate-400 mt-1 break-keep leading-relaxed">최대 4장을 한 액자에 배치해요</p>
                             </div>
+                            <ChevronRight size={18} className="text-slate-300 flex-shrink-0" />
                         </motion.button>
 
                         {/* 개별 사진 크롭 */}
@@ -174,29 +164,16 @@ export default function MagicFrameEditPage() {
                             transition={{ delay: 0.08, duration: 0.3 }}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => setSelectedTool('crop')}
-                            className="w-full bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm text-left"
+                            className="w-full bg-white rounded-2xl p-5 flex items-center gap-4 text-left border border-slate-100 shadow-sm active:scale-[0.98] transition-transform"
                         >
-                            <div className="bg-gradient-to-br from-sky-50 to-blue-100 px-5 pt-5 pb-3 flex justify-center">
-                                <div className="relative w-28 h-36">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-slate-200 to-sky-100 rounded-xl" />
-                                    <div className="absolute top-0 left-0 w-5 h-5 border-t-[3px] border-l-[3px] border-sky-500 rounded-tl-sm" />
-                                    <div className="absolute top-0 right-0 w-5 h-5 border-t-[3px] border-r-[3px] border-sky-500 rounded-tr-sm" />
-                                    <div className="absolute bottom-0 left-0 w-5 h-5 border-b-[3px] border-l-[3px] border-sky-500 rounded-bl-sm" />
-                                    <div className="absolute bottom-0 right-0 w-5 h-5 border-b-[3px] border-r-[3px] border-sky-500 rounded-br-sm" />
-                                    <div className="absolute inset-x-0 top-1/2 h-px bg-sky-400/25" />
-                                    <div className="absolute inset-y-0 left-1/2 w-px bg-sky-400/25" />
-                                </div>
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-teal-200/70">
+                                <Crop size={24} className="text-white" />
                             </div>
-                            <div className="px-4 py-3.5 flex items-center gap-3">
-                                <div className="w-9 h-9 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
-                                    <Crop size={16} className="text-white" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-black text-slate-800 text-sm">개별 사진 크롭</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">3:4, 4:3 비율로 정밀하게 편집해요</p>
-                                </div>
-                                <ChevronRight size={15} className="text-slate-300 flex-shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-bold text-slate-900 text-[15px] leading-snug">개별 사진 크롭</p>
+                                <p className="text-[13px] text-slate-400 mt-1 break-keep leading-relaxed">3:4, 4:3 비율로 정밀하게 편집해요</p>
                             </div>
+                            <ChevronRight size={18} className="text-slate-300 flex-shrink-0" />
                         </motion.button>
 
                         {/* 갤러리 */}
@@ -205,34 +182,16 @@ export default function MagicFrameEditPage() {
                             transition={{ delay: 0.16, duration: 0.3 }}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => setSelectedTool('gallery')}
-                            className="w-full bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm text-left"
+                            className="w-full bg-white rounded-2xl p-5 flex items-center gap-4 text-left border border-slate-100 shadow-sm active:scale-[0.98] transition-transform"
                         >
-                            <div className="bg-gradient-to-br from-pink-50 to-rose-100 px-5 pt-5 pb-3">
-                                <div className="flex gap-1.5">
-                                    <div className="flex-1 flex flex-col gap-1.5">
-                                        <div className="h-14 rounded-xl bg-gradient-to-br from-pink-300 to-rose-400 opacity-80" />
-                                        <div className="h-8 rounded-xl bg-gradient-to-br from-violet-300 to-purple-400 opacity-80" />
-                                    </div>
-                                    <div className="flex-1 flex flex-col gap-1.5">
-                                        <div className="h-8 rounded-xl bg-gradient-to-br from-sky-300 to-blue-400 opacity-80" />
-                                        <div className="h-14 rounded-xl bg-gradient-to-br from-amber-200 to-orange-300 opacity-80" />
-                                    </div>
-                                    <div className="flex-1 flex flex-col gap-1.5">
-                                        <div className="h-11 rounded-xl bg-gradient-to-br from-emerald-200 to-teal-300 opacity-80" />
-                                        <div className="h-11 rounded-xl bg-gradient-to-br from-fuchsia-200 to-pink-300 opacity-80" />
-                                    </div>
-                                </div>
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-rose-200/70">
+                                <ImageIcon size={24} className="text-white" />
                             </div>
-                            <div className="px-4 py-3.5 flex items-center gap-3">
-                                <div className="w-9 h-9 bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
-                                    <ImageIcon size={16} className="text-white" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-black text-slate-800 text-sm">갤러리</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">업로드된 작품들을 확인해요</p>
-                                </div>
-                                <ChevronRight size={15} className="text-slate-300 flex-shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-bold text-slate-900 text-[15px] leading-snug">갤러리</p>
+                                <p className="text-[13px] text-slate-400 mt-1 break-keep leading-relaxed">업로드된 작품들을 확인해요</p>
                             </div>
+                            <ChevronRight size={18} className="text-slate-300 flex-shrink-0" />
                         </motion.button>
                     </motion.div>
                 ) : (

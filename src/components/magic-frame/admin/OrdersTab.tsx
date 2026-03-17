@@ -6,6 +6,7 @@ import {
     Search, ArrowUpDown, Loader2, Upload, Download, X,
     Clock, Package, PackageCheck, Truck, AlertCircle, Trash2, ShoppingBag,
 } from 'lucide-react';
+import { adminFetch } from '@/lib/admin-token';
 import { CsvImportModal } from './CsvImportModal';
 import { TrackingImportModal } from './TrackingImportModal';
 import { BatchActionBar } from './BatchActionBar';
@@ -72,7 +73,7 @@ export function OrdersTab() {
             if (search) params.set('search', search);
             if (statusFilter !== 'all') params.set('status', statusFilter);
             params.set('sort', sort);
-            const res = await fetch(`/api/magic-frame/admin/unified?${params}`);
+            const res = await adminFetch(`/api/magic-frame/admin/unified?${params}`);
             const data = await res.json();
             if (data.error) { setError(data.error); return; }
             setOrders(data.orders || []);
@@ -91,7 +92,7 @@ export function OrdersTab() {
     const handleStatusChange = async (userId: string, shippingStatus: string) => {
         setStatusLoading(userId);
         try {
-            const res = await fetch('/api/magic-frame/admin/shipping', {
+            const res = await adminFetch('/api/magic-frame/admin/shipping', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, shipping_status: shippingStatus }),
@@ -108,7 +109,7 @@ export function OrdersTab() {
 
     const handleBatchStatusChange = async (status: string) => {
         try {
-            const res = await fetch('/api/magic-frame/admin/shipping/batch', {
+            const res = await adminFetch('/api/magic-frame/admin/shipping/batch', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userIds: Array.from(selectedIds), shipping_status: status }),
@@ -123,7 +124,7 @@ export function OrdersTab() {
     };
 
     const handleDetailSave = async (userId: string, data: Record<string, any>) => {
-        const res = await fetch('/api/magic-frame/admin/shipping', {
+        const res = await adminFetch('/api/magic-frame/admin/shipping', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, ...data }),
@@ -134,7 +135,7 @@ export function OrdersTab() {
     };
 
     const handleAddonStatusChange = async (orderId: string, newStatus: string) => {
-        const res = await fetch('/api/magic-frame/admin/orders', {
+        const res = await adminFetch('/api/magic-frame/admin/orders', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderId, status: newStatus }),
@@ -145,7 +146,7 @@ export function OrdersTab() {
     };
 
     const handleResetSubmission = async (userId: string) => {
-        const res = await fetch('/api/magic-frame/admin', {
+        const res = await adminFetch('/api/magic-frame/admin', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId }),
@@ -158,7 +159,7 @@ export function OrdersTab() {
     const handleDelete = async (userId: string) => {
         setDeleteLoading(true);
         try {
-            const res = await fetch('/api/magic-frame/admin', {
+            const res = await adminFetch('/api/magic-frame/admin', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId }),
@@ -182,7 +183,7 @@ export function OrdersTab() {
             const map: Record<string, string> = { received: 'pending', producing: 'new_order', preparing: 'preparing', shipped: 'shipped' };
             if (map[statusFilter]) params.set('status', map[statusFilter]);
         }
-        const res = await fetch(`/api/magic-frame/admin/shipping/export?${params}`);
+        const res = await adminFetch(`/api/magic-frame/admin/shipping/export?${params}`);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

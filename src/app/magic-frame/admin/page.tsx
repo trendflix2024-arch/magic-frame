@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, RefreshCw, Loader2, ClipboardList, Package } from "lucide-react";
 import { OrdersTab } from "@/components/magic-frame/admin/OrdersTab";
 import { ProductsTab } from "@/components/magic-frame/admin/ProductsTab";
+import { ADMIN_TOKEN_KEY } from "@/lib/admin-token";
 
 const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
 
@@ -14,11 +15,19 @@ export default function MagicFrameAdminPage() {
     const router = useRouter();
     const [tab, setTab] = useState<"orders" | "products">("orders");
     const [refreshKey, setRefreshKey] = useState(0);
+    const [sessionAdmin, setSessionAdmin] = useState(false);
+    const [sessionChecked, setSessionChecked] = useState(false);
+
+    useEffect(() => {
+        const token = sessionStorage.getItem(ADMIN_TOKEN_KEY);
+        setSessionAdmin(!!token);
+        setSessionChecked(true);
+    }, []);
 
     const isDev = process.env.NODE_ENV === "development";
-    const isAdmin = isDev || (status === "authenticated" && ADMIN_EMAILS.includes(session?.user?.email || ""));
+    const isAdmin = isDev || sessionAdmin || (status === "authenticated" && ADMIN_EMAILS.includes(session?.user?.email || ""));
 
-    if (!isDev && status === "loading") {
+    if (!isDev && (!sessionChecked || status === "loading")) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <Loader2 className="animate-spin text-indigo-500" size={32} />
@@ -27,7 +36,7 @@ export default function MagicFrameAdminPage() {
     }
 
     if (!isAdmin) {
-        if (status === "authenticated") router.replace("/magic-frame");
+        router.replace("/magic-frame/login");
         return null;
     }
 

@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { checkAdminAuth } from '@/lib/admin-auth';
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
 const BUCKET = 'magic-frame';
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
 
-function isAdmin(email: string | null | undefined) {
-    if (!email) return false;
-    return ADMIN_EMAILS.includes(email);
-}
-
 export async function POST(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

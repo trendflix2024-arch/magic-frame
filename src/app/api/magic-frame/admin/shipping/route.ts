@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
-
-function isAdmin(email: string | null | undefined) {
-    if (!email) return false;
-    return ADMIN_EMAILS.includes(email);
-}
+import { checkAdminAuth } from '@/lib/admin-auth';
 
 const SHIPPING_COLUMNS = 'id, name, phone, submitted, image_url, image_type, updated_at, created_at, shipping_status, address, postal_code, address_detail, tracking_number, shipping_carrier, shipping_memo, shipped_at';
 
 // GET: List submitted users with shipping data
 export async function GET(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -54,8 +45,7 @@ export async function GET(req: NextRequest) {
 
 // PATCH: Update shipping info for a single user
 export async function PATCH(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

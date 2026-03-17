@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { adminFetch } from '@/lib/admin-token';
 import Papa from 'papaparse';
 
 interface CsvImportModalProps {
@@ -110,7 +111,7 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
 
     const matchEntries = async (entries: CsvEntry[]) => {
         try {
-            const res = await fetch('/api/magic-frame/admin/shipping/import', {
+            const res = await adminFetch('/api/magic-frame/admin/shipping/import', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ entries }),
@@ -150,7 +151,7 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
         setError('');
 
         try {
-            const res = await fetch('/api/magic-frame/admin/shipping/import', {
+            const res = await adminFetch('/api/magic-frame/admin/shipping/import', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ matches }),

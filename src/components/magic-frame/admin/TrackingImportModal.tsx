@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, X, Hash, CheckCircle2, AlertCircle, Loader2, ArrowRight, AlertTriangle } from 'lucide-react';
+import { adminFetch } from '@/lib/admin-token';
 import Papa from 'papaparse';
 import { formatPhone } from './OrderCard';
 
@@ -103,7 +104,7 @@ export function TrackingImportModal({ open, onClose, onImportComplete }: Trackin
 
     const matchEntries = async (entries: CsvEntry[]) => {
         try {
-            const res = await fetch('/api/magic-frame/admin/shipping/tracking-import', {
+            const res = await adminFetch('/api/magic-frame/admin/shipping/tracking-import', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ entries }),
@@ -142,7 +143,7 @@ export function TrackingImportModal({ open, onClose, onImportComplete }: Trackin
         setError('');
 
         try {
-            const res = await fetch('/api/magic-frame/admin/shipping/tracking-import', {
+            const res = await adminFetch('/api/magic-frame/admin/shipping/tracking-import', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ matches }),

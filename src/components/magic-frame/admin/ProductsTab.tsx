@@ -6,6 +6,7 @@ import {
     Loader2, Plus, Pencil, Trash2, X, Check, AlertCircle,
     Eye, EyeOff, ShoppingBag, Upload, ExternalLink, ImageIcon,
 } from 'lucide-react';
+import { adminFetch } from '@/lib/admin-token';
 
 interface Product {
     id: string;
@@ -56,7 +57,7 @@ export function ProductsTab() {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch('/api/magic-frame/admin/products');
+            const res = await adminFetch('/api/magic-frame/admin/products');
             const data = await res.json();
             if (data.error) { setError(data.error); return; }
             setProducts(data.products || []);
@@ -117,7 +118,7 @@ export function ProductsTab() {
                 return;
             }
 
-            const res = await fetch('/api/magic-frame/admin/products', {
+            const res = await adminFetch('/api/magic-frame/admin/products', {
                 method: isEdit ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -142,7 +143,7 @@ export function ProductsTab() {
             formData.append('image', file);
             formData.append('productId', editingId || form.id || `temp-${Date.now()}`);
 
-            const res = await fetch('/api/magic-frame/admin/products/image', {
+            const res = await adminFetch('/api/magic-frame/admin/products/image', {
                 method: 'POST',
                 body: formData,
             });
@@ -159,7 +160,7 @@ export function ProductsTab() {
 
     const handleToggleActive = async (p: Product) => {
         try {
-            const res = await fetch('/api/magic-frame/admin/products', {
+            const res = await adminFetch('/api/magic-frame/admin/products', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: p.id, active: !p.active }),
@@ -175,7 +176,7 @@ export function ProductsTab() {
     const handleDelete = async (id: string) => {
         setDeleting(true);
         try {
-            const res = await fetch('/api/magic-frame/admin/products', {
+            const res = await adminFetch('/api/magic-frame/admin/products', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id }),

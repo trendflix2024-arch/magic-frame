@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
-
-function isAdmin(email: string | null | undefined) {
-    if (!email) return false;
-    return ADMIN_EMAILS.includes(email);
-}
+import { checkAdminAuth } from '@/lib/admin-auth';
 
 function formatPhone(phone: string) {
     if (phone.length === 11) return `${phone.slice(0, 3)}-${phone.slice(3, 7)}-${phone.slice(7)}`;
@@ -18,8 +10,7 @@ function formatPhone(phone: string) {
 
 // GET: Export shipping data as CSV
 export async function GET(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { User, Phone, ArrowRight, Loader2, AlertCircle, Mail, MessageCircle, RotateCcw, Package } from 'lucide-react';
 import { MagicFrameLayout } from '@/components/magic-frame/MagicFrameLayout';
 import { KAKAO_CHANNEL_URL, SUPPORT_EMAIL } from '@/lib/magic-frame-config';
+import { setAdminToken } from '@/lib/admin-token';
 
 function formatPhone(value: string) {
     const nums = value.replace(/[^0-9]/g, '').slice(0, 11);
@@ -70,6 +71,13 @@ export default function MagicFrameLogin() {
                 body: JSON.stringify({ name: name.trim(), phone: cleanPhone }),
             });
             const data = await res.json();
+
+            // Admin login
+            if (data.isAdmin) {
+                setAdminToken(data.adminToken);
+                router.push('/magic-frame/admin');
+                return;
+            }
 
             if (data.submitted) {
                 setSubmittedUserId(data.userId);

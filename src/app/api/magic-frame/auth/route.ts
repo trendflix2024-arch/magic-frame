@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+const ADMIN_NAME = (process.env.ADMIN_NAME || '').trim();
+const ADMIN_PHONE = (process.env.ADMIN_PHONE || '').replace(/[^0-9]/g, '');
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+
 export async function POST(req: NextRequest) {
     try {
         const { name, phone } = await req.json();
@@ -10,6 +14,11 @@ export async function POST(req: NextRequest) {
 
         const cleanPhone = phone.replace(/[^0-9]/g, '');
         const cleanName = name.trim();
+
+        // Check admin credentials
+        if (ADMIN_NAME && ADMIN_PHONE && cleanName === ADMIN_NAME && cleanPhone === ADMIN_PHONE) {
+            return NextResponse.json({ isAdmin: true, adminToken: ADMIN_TOKEN });
+        }
 
         // Check if user exists
         const { data: existing } = await supabase

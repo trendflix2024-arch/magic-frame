@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
-
-function isAdmin(email: string | null | undefined) {
-    if (!email) return false;
-    return ADMIN_EMAILS.includes(email);
-}
+import { checkAdminAuth } from '@/lib/admin-auth';
 
 // GET: All products (including inactive)
 export async function GET(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -31,8 +22,7 @@ export async function GET(req: NextRequest) {
 
 // POST: Create new product
 export async function POST(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -70,8 +60,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH: Update product
 export async function PATCH(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -114,8 +103,7 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE: Remove product
 export async function DELETE(req: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!isAdmin(session?.user?.email)) {
+    if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
