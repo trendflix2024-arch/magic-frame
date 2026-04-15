@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
     Search, ArrowUpDown, Loader2, Upload, Download, X,
     Clock, Package, PackageCheck, Truck, AlertCircle, Trash2, ShoppingBag,
+    ChevronLeft, ChevronRight, Calendar, Users, Sparkles, CircleDollarSign,
 } from 'lucide-react';
 import { adminFetch } from '@/lib/admin-token';
 import { CsvImportModal } from './CsvImportModal';
@@ -14,8 +15,15 @@ import { OrderCard, type UnifiedOrder, PIPELINE_CONFIG, type PipelineStatus, for
 import { OrderDetailModal } from './OrderDetailModal';
 
 type UnifiedStatus = 'all' | PipelineStatus;
+type SourceFilter = 'all' | 'gajeong' | 'coupang' | 'naver';
 
 const PIPELINE_KEYS: PipelineStatus[] = ['waiting', 'received', 'producing', 'preparing', 'shipped'];
+
+const SOURCE_CONFIG: Record<string, { label: string; badge: string }> = {
+    gajeong: { label: '가정의달', badge: 'bg-indigo-100 text-indigo-600' },
+    coupang: { label: '쿠팡',    badge: 'bg-orange-100 text-orange-600' },
+    naver:   { label: '네이버',  badge: 'bg-green-100 text-green-700' },
+};
 
 interface Counts {
     waiting: number;
@@ -26,30 +34,52 @@ interface Counts {
     total: number;
 }
 
-function computeAddonStats(orders: UnifiedOrder[]) {
-    let totalRevenue = 0;
-    let paidCount = 0;
-    for (const o of orders) {
-        for (const a of o.addon_orders) {
-            if (a.status !== 'cancelled') {
-                totalRevenue += a.amount;
-            }
-            if (a.status === 'paid') paidCount++;
-        }
-    }
-    return { totalRevenue, paidCount };
+interface Kpi {
+    total: number;
+    todayNew: number;
+    pendingShipment: number;
+    addonRevenue: number;
+    addonPending: number;
+}
+
+type DatePreset = 'all' | 'today' | 'week' | 'month';
+
+const PAGE_SIZE = 50;
+
+function getDateRange(preset: DatePreset): { from: string; to: string } {
+    if (preset === 'all') return { from: '', to: '' };
+    const now = new Date();
+    const to = new Date(now);
+    to.setHours(23, 59, 59, 999);
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    if (preset === 'week') from.setDate(from.getDate() - 6);
+    if (preset === 'month') from.setDate(1);
+    return { from: from.toISOString(), to: to.toISOString() };
 }
 
 export function OrdersTab() {
     const [orders, setOrders] = useState<UnifiedOrder[]>([]);
     const [counts, setCounts] = useState<Counts>({ waiting: 0, received: 0, producing: 0, preparing: 0, shipped: 0, total: 0 });
+    const [kpi, setKpi] = useState<Kpi>({ total: 0, todayNew: 0, pendingShipment: 0, addonRevenue: 0, addonPending: 0 });
+    const [total, setTotal] = useState(0);
+    const [page, setPage] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     // Filters
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<UnifiedStatus>('all');
+    const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
     const [sort, setSort] = useState<'recent' | 'name'>('recent');
+    const [datePreset, setDatePreset] = useState<DatePreset>('all');
+
+    // Bulk action confirm
+    const [bulkConfirm, setBulkConfirm] = useState<{ status: string; label: string } | null>(null);
+    const [bulkLoading, setBulkLoading] = useState(false);
+
+    // Source map (userId → source)
+    const [sourceMap, setSourceMap] = useState<Record<string, string>>({});
 
     // Selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -65,27 +95,49 @@ export function OrdersTab() {
     // Status change loading
     const [statusLoading, setStatusLoading] = useState<string | null>(null);
 
+    const buildQueryParams = useCallback(() => {
+        const params = new URLSearchParams();
+        if (search) params.set('search', search);
+        if (statusFilter !== 'all') params.set('status', statusFilter);
+        params.set('sort', sort);
+        const { from, to } = getDateRange(datePreset);
+        if (from) params.set('dateFrom', from);
+        if (to) params.set('dateTo', to);
+        return params;
+    }, [search, statusFilter, sort, datePreset]);
+
     const fetchOrders = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            const params = new URLSearchParams();
-            if (search) params.set('search', search);
-            if (statusFilter !== 'all') params.set('status', statusFilter);
-            params.set('sort', sort);
+            const params = buildQueryParams();
+            params.set('limit', String(PAGE_SIZE));
+            params.set('offset', String(page * PAGE_SIZE));
             const res = await adminFetch(`/api/magic-frame/admin/unified?${params}`);
             const data = await res.json();
             if (data.error) { setError(data.error); return; }
             setOrders(data.orders || []);
             setCounts(data.counts || { waiting: 0, received: 0, producing: 0, preparing: 0, shipped: 0, total: 0 });
+            setKpi(data.kpi || { total: 0, todayNew: 0, pendingShipment: 0, addonRevenue: 0, addonPending: 0 });
+            setTotal(data.total || 0);
         } catch {
             setError('데이터를 불러올 수 없습니다.');
         } finally {
             setLoading(false);
         }
-    }, [search, statusFilter, sort]);
+    }, [buildQueryParams, page]);
 
     useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+    // Reset to page 0 when filters change
+    useEffect(() => { setPage(0); }, [search, statusFilter, sort, datePreset]);
+
+    useEffect(() => {
+        adminFetch('/api/magic-frame/admin/user-sources')
+            .then(r => r.json())
+            .then(d => setSourceMap(d.sources || {}))
+            .catch(() => {});
+    }, []);
 
     // ── Handlers ──
 
@@ -107,19 +159,28 @@ export function OrdersTab() {
         }
     };
 
-    const handleBatchStatusChange = async (status: string) => {
+    const handleBatchStatusRequest = (status: string, label: string) => {
+        setBulkConfirm({ status, label });
+    };
+
+    const handleBatchStatusConfirm = async () => {
+        if (!bulkConfirm) return;
+        setBulkLoading(true);
         try {
             const res = await adminFetch('/api/magic-frame/admin/shipping/batch', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userIds: Array.from(selectedIds), shipping_status: status }),
+                body: JSON.stringify({ userIds: Array.from(selectedIds), shipping_status: bulkConfirm.status }),
             });
             const data = await res.json();
             if (data.error) { setError(data.error); return; }
             setSelectedIds(new Set());
+            setBulkConfirm(null);
             fetchOrders();
         } catch {
             setError('일괄 변경 중 오류가 발생했습니다.');
+        } finally {
+            setBulkLoading(false);
         }
     };
 
@@ -177,12 +238,9 @@ export function OrdersTab() {
     };
 
     const handleExport = async () => {
-        const params = new URLSearchParams();
-        if (statusFilter !== 'all') {
-            // Map unified status to shipping status for export
-            const map: Record<string, string> = { received: 'pending', producing: 'new_order', preparing: 'preparing', shipped: 'shipped' };
-            if (map[statusFilter]) params.set('status', map[statusFilter]);
-        }
+        // Export respects current search/status/date filters
+        const params = buildQueryParams();
+        params.set('submittedOnly', statusFilter === 'waiting' ? 'false' : 'true');
         const res = await adminFetch(`/api/magic-frame/admin/shipping/export?${params}`);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -209,8 +267,76 @@ export function OrdersTab() {
         }
     };
 
+    const filteredOrders = sourceFilter === 'all'
+        ? orders
+        : orders.filter(o => (sourceMap[o.id] || 'gajeong') === sourceFilter);
+
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
     return (
         <>
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                        <Users size={11} /> 전체 고객
+                    </div>
+                    <p className="text-xl font-bold text-slate-800 mt-1">{kpi.total.toLocaleString()}</p>
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                        <Sparkles size={11} className="text-emerald-500" /> 오늘 신규
+                    </div>
+                    <p className="text-xl font-bold text-emerald-600 mt-1">+{kpi.todayNew}</p>
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                        <Package size={11} className="text-amber-500" /> 미배송
+                    </div>
+                    <p className="text-xl font-bold text-amber-600 mt-1">{kpi.pendingShipment}</p>
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                        <CircleDollarSign size={11} className="text-purple-500" /> 추가구매 매출
+                    </div>
+                    <p className="text-lg font-bold text-purple-600 mt-1">₩{kpi.addonRevenue.toLocaleString()}</p>
+                </div>
+            </div>
+
+            {/* Date preset */}
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+                <Calendar size={13} className="text-slate-400 flex-shrink-0" />
+                {(['all', 'today', 'week', 'month'] as DatePreset[]).map(p => (
+                    <button key={p}
+                        onClick={() => setDatePreset(p)}
+                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                            datePreset === p
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        }`}>
+                        {p === 'all' ? '전체' : p === 'today' ? '오늘' : p === 'week' ? '이번주' : '이번달'}
+                    </button>
+                ))}
+            </div>
+
+            {/* Source Filter Bar */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+                {(['all', 'gajeong', 'coupang', 'naver'] as SourceFilter[]).map(s => (
+                    <button key={s}
+                        onClick={() => setSourceFilter(s)}
+                        className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                            sourceFilter === s
+                                ? s === 'coupang' ? 'bg-orange-500 text-white border-orange-500'
+                                : s === 'naver' ? 'bg-[#03C75A] text-white border-[#03C75A]'
+                                : s === 'gajeong' ? 'bg-indigo-500 text-white border-indigo-500'
+                                : 'bg-slate-800 text-white border-slate-800'
+                                : 'bg-white text-slate-500 border-slate-200'
+                        }`}>
+                        {s === 'all' ? '전체' : SOURCE_CONFIG[s].label}
+                    </button>
+                ))}
+            </div>
+
             {/* Pipeline Filter Bar */}
             <div className="flex gap-2 overflow-x-auto pb-1">
                 <button
@@ -234,33 +360,13 @@ export function OrdersTab() {
                 })}
             </div>
 
-            {/* Addon Revenue Summary */}
-            {(() => {
-                const { totalRevenue, paidCount } = computeAddonStats(orders);
-                if (totalRevenue === 0 && !loading) return null;
-                return totalRevenue > 0 ? (
-                    <div className="flex items-center gap-4 bg-white rounded-xl px-4 py-2.5 border border-slate-100 shadow-sm">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                            <ShoppingBag size={13} className="text-purple-500" />
-                            <span className="font-medium">추가 구매</span>
-                        </div>
-                        <span className="text-sm font-bold text-purple-600">₩{totalRevenue.toLocaleString()}</span>
-                        {paidCount > 0 && (
-                            <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-bold">
-                                미배송 {paidCount}건
-                            </span>
-                        )}
-                    </div>
-                ) : null;
-            })()}
-
             {/* Toolbar */}
             <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-2">
                     <div className="flex-1 relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input value={search} onChange={e => setSearch(e.target.value)}
-                            placeholder="이름 또는 연락처 검색"
+                            placeholder="이름 · 연락처 · 행번 검색"
                             className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
                     </div>
                     <button onClick={() => setSort(prev => prev === 'recent' ? 'name' : 'recent')}
@@ -292,7 +398,7 @@ export function OrdersTab() {
             {selectedIds.size > 0 && (
                 <BatchActionBar
                     selectedCount={selectedIds.size}
-                    onStatusChange={handleBatchStatusChange}
+                    onStatusChange={handleBatchStatusRequest}
                     onClearSelection={() => setSelectedIds(new Set())}
                 />
             )}
@@ -314,30 +420,84 @@ export function OrdersTab() {
                     {/* Select all */}
                     <div className="flex items-center gap-2 px-1">
                         <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
-                            <input type="checkbox" checked={selectedIds.size === orders.length && orders.length > 0}
+                            <input type="checkbox" checked={selectedIds.size === filteredOrders.length && filteredOrders.length > 0}
                                 onChange={toggleSelectAll}
                                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                            전체 선택 ({orders.length})
+                            전체 선택 ({filteredOrders.length})
                         </label>
                     </div>
 
-                    <div className="space-y-2">
-                        {orders.map(order => (
-                            <OrderCard
-                                key={order.id}
-                                order={order}
-                                selected={selectedIds.has(order.id)}
-                                onToggleSelect={toggleSelect}
-                                onStatusChange={handleStatusChange}
-                                onOpenDetail={setDetailOrder}
-                                onDelete={id => setConfirmDelete(id)}
-                                onOpenLightbox={setLightbox}
-                                statusLoading={statusLoading}
-                            />
-                        ))}
+                    <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                        <span>총 {total.toLocaleString()}건 · {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)}</span>
                     </div>
+
+                    <div className="space-y-2">
+                        {filteredOrders.map(order => {
+                            const src = sourceMap[order.id];
+                            const srcCfg = src ? SOURCE_CONFIG[src] : null;
+                            return (
+                                <OrderCard
+                                    key={order.id}
+                                    order={order}
+                                    selected={selectedIds.has(order.id)}
+                                    onToggleSelect={toggleSelect}
+                                    onStatusChange={handleStatusChange}
+                                    onOpenDetail={setDetailOrder}
+                                    onDelete={id => setConfirmDelete(id)}
+                                    onOpenLightbox={setLightbox}
+                                    statusLoading={statusLoading}
+                                    sourceBadge={srcCfg ? { label: srcCfg.label, className: srcCfg.badge } : null}
+                                />
+                            );
+                        })}
+                    </div>
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                                className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30">
+                                <ChevronLeft size={13} /> 이전
+                            </button>
+                            <span className="text-xs text-slate-500 font-medium px-3">
+                                {page + 1} / {totalPages}
+                            </span>
+                            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+                                className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30">
+                                다음 <ChevronRight size={13} />
+                            </button>
+                        </div>
+                    )}
                 </>
             )}
+
+            {/* Bulk confirm modal */}
+            <AnimatePresence>
+                {bulkConfirm && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl p-6 max-w-xs w-full shadow-2xl text-center">
+                            <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <PackageCheck size={20} className="text-indigo-600" />
+                            </div>
+                            <h3 className="text-sm font-bold text-slate-800 mb-1">
+                                {selectedIds.size}건을 {bulkConfirm.label} 처리할까요?
+                            </h3>
+                            <p className="text-xs text-slate-400 mb-4">되돌리려면 개별 수정이 필요합니다</p>
+                            <div className="flex gap-2">
+                                <button onClick={() => setBulkConfirm(null)} disabled={bulkLoading}
+                                    className="flex-1 py-2.5 text-slate-500 font-medium rounded-xl hover:bg-slate-50 transition-colors text-sm">취소</button>
+                                <button onClick={handleBatchStatusConfirm} disabled={bulkLoading}
+                                    className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors text-sm flex items-center justify-center gap-1">
+                                    {bulkLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                                    확인
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* CSV Import Modal */}
             <CsvImportModal open={csvModalOpen} onClose={() => setCsvModalOpen(false)} onImportComplete={fetchOrders} />

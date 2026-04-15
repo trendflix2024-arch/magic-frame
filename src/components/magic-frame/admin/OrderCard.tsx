@@ -24,6 +24,7 @@ export interface AddonOrder {
 export interface UnifiedOrder {
     id: string;
     name: string;
+    haengbun: string | null;
     phone: string;
     submitted: boolean;
     image_url: string | null;
@@ -92,11 +93,12 @@ interface OrderCardProps {
     onDelete: (userId: string) => void;
     onOpenLightbox: (url: string) => void;
     statusLoading?: string | null;
+    sourceBadge?: { label: string; className: string } | null;
 }
 
 export function OrderCard({
     order, selected, onToggleSelect, onStatusChange,
-    onOpenDetail, onDelete, onOpenLightbox, statusLoading,
+    onOpenDetail, onDelete, onOpenLightbox, statusLoading, sourceBadge,
 }: OrderCardProps) {
     const [dropdown, setDropdown] = useState(false);
     const cfg = PIPELINE_CONFIG[order.unified_status as PipelineStatus] || PIPELINE_CONFIG.received;
@@ -137,6 +139,11 @@ export function OrderCard({
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full ${cfg.color}`}>
                             <StatusIcon size={10} /> {cfg.label}
                         </span>
+                        {sourceBadge && (
+                            <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full ${sourceBadge.className}`}>
+                                {sourceBadge.label}
+                            </span>
+                        )}
                         {activeAddons.length > 0 && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-full">
                                 <ShoppingBag size={10} /> {activeAddons.length}건 ₩{addonTotal.toLocaleString()}

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus, RotateCcw, Check, X, LayoutGrid, Circle, Save, ArrowLeftRight, Camera, Type, Trash2 } from 'lucide-react';
 import type { TextLayer } from './PhotoCropper';
+import { PhotoCropModal } from './PhotoCropModal';
 import {
     FONTS,
     DEFAULT_FONT,
@@ -100,6 +101,50 @@ const LAYOUTS: Layout[] = [
             { x: 2 / 3, y: 0.5, w: 1 / 3, h: 0.5 },
         ],
     },
+    // ── 2슬롯 비대칭 (매거진) ──
+    {
+        key: '2-lr-wide', slots: 2, cells: [
+            { x: 0, y: 0, w: 0.6, h: 1 },
+            { x: 0.6, y: 0, w: 0.4, h: 1 },
+        ],
+    },
+    {
+        key: '2-tb-wide', slots: 2, cells: [
+            { x: 0, y: 0, w: 1, h: 0.6 },
+            { x: 0, y: 0.6, w: 1, h: 0.4 },
+        ],
+    },
+    // ── 3슬롯 추가 ──
+    {
+        key: '3-1l2r', slots: 3, cells: [
+            { x: 0, y: 0, w: 0.5, h: 1 },
+            { x: 0.5, y: 0, w: 0.5, h: 0.5 },
+            { x: 0.5, y: 0.5, w: 0.5, h: 0.5 },
+        ],
+    },
+    {
+        key: '3-2l1r', slots: 3, cells: [
+            { x: 0, y: 0, w: 0.5, h: 0.5 },
+            { x: 0, y: 0.5, w: 0.5, h: 0.5 },
+            { x: 0.5, y: 0, w: 0.5, h: 1 },
+        ],
+    },
+    {
+        key: '3-horiz', slots: 3, cells: [
+            { x: 0, y: 0, w: 1 / 3, h: 1 },
+            { x: 1 / 3, y: 0, w: 1 / 3, h: 1 },
+            { x: 2 / 3, y: 0, w: 1 / 3, h: 1 },
+        ],
+    },
+    // ── 4슬롯 추가 ──
+    {
+        key: '4-horiz', slots: 4, cells: [
+            { x: 0, y: 0, w: 0.25, h: 1 },
+            { x: 0.25, y: 0, w: 0.25, h: 1 },
+            { x: 0.5, y: 0, w: 0.25, h: 1 },
+            { x: 0.75, y: 0, w: 0.25, h: 1 },
+        ],
+    },
 ];
 
 function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -124,7 +169,7 @@ function getTouchDist(touches: Map<number, { x: number; y: number }>) {
 
 export function CollageMaker({ onFinalize }: CollageProps) {
     const [layout, setLayout] = useState<string>('4-grid');
-    const [images, setImages] = useState<(string | null)[]>([null, null, null, null]);
+    const [images, setImages] = useState<(string | null)[]>(Array(4).fill(null));
     const [ratio, setRatio] = useState<'3:4' | '4:3'>('3:4');
     const [spacing, setSpacing] = useState(8);
     const [bgColor, setBgColor] = useState('#FFFFFF');
@@ -139,6 +184,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const [texts, setTexts] = useState<TextLayer[]>([]);
     const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
     const [pickedDate, setPickedDate] = useState<string>(() => todayIso());
+    const [pendingCrop, setPendingCrop] = useState<{ src: string; index: number; aspect: number } | null>(null);
     const selectedText = texts.find(t => t.id === selectedTextId) ?? null;
     const textDragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
     const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -197,7 +243,10 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const touchesRef = useRef<Map<number, Map<number, { x: number; y: number }>>>(new Map());
     const pinchRef = useRef<Map<number, { startDist: number; startZoom: number }>>(new Map());
 
-    const currentLayout = LAYOUTS.find(l => l.key === layout) ?? LAYOUTS[6];
+    const currentLayout =
+        LAYOUTS.find(l => l.key === layout) ??
+        LAYOUTS.find(l => l.key === '4-grid') ??
+        LAYOUTS[0];
     const filteredLayouts = filterSlots === null ? LAYOUTS : LAYOUTS.filter(l => l.slots === filterSlots);
     const slotImages = images.slice(0, currentLayout.slots);
     const hasAnyImage = slotImages.some(Boolean);
@@ -361,12 +410,27 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => {
-            setImages(prev => { const next = [...prev]; next[index] = reader.result as string; return next; });
-            setTransforms(prev => { const next = [...prev]; next[index] = { ...DEFAULT_T }; return next; });
+            const src = reader.result as string;
+            const cell = currentLayout.cells[index];
+            if (!cell) return;
+            const cellW = cell.w * previewW;
+            const cellH = cell.h * previewH;
+            const aspect = cellW / cellH;
+            setPendingCrop({ src, index, aspect });
         };
         reader.readAsDataURL(file);
         e.target.value = '';
     };
+
+    const handleCropApply = (croppedDataUrl: string) => {
+        if (!pendingCrop) return;
+        const i = pendingCrop.index;
+        setImages(prev => { const next = [...prev]; next[i] = croppedDataUrl; return next; });
+        setTransforms(prev => { const next = [...prev]; next[i] = { ...DEFAULT_T }; return next; });
+        setPendingCrop(null);
+    };
+
+    const handleCropCancel = () => setPendingCrop(null);
 
     const removeImage = (index: number) => {
         setImages(prev => { const next = [...prev]; next[index] = null; return next; });
@@ -954,6 +1018,14 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                     </button>
                 </div>
             </div>
+            {pendingCrop && (
+                <PhotoCropModal
+                    imageSrc={pendingCrop.src}
+                    aspect={pendingCrop.aspect}
+                    onApply={handleCropApply}
+                    onCancel={handleCropCancel}
+                />
+            )}
         </div>
     );
 }
