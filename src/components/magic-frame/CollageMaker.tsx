@@ -261,13 +261,26 @@ export function CollageMaker({ onFinalize }: CollageProps) {
             const saved = localStorage.getItem('magic_frame_collage_draft');
             if (!saved) return;
             const draft = JSON.parse(saved);
-            if (draft.layout) setLayout(draft.layout);
-            if (draft.images) setImages(draft.images);
+            // draft.layout 기준으로 필요한 슬롯 수 결정 (없으면 현재 기본값)
+            const savedLayoutKey = typeof draft.layout === 'string' ? draft.layout : null;
+            const savedLayout = savedLayoutKey ? LAYOUTS.find(l => l.key === savedLayoutKey) : null;
+            const targetSlots = savedLayout?.slots ?? 4;
+            if (savedLayoutKey) setLayout(savedLayoutKey);
+            if (Array.isArray(draft.images)) {
+                const padded = Array(targetSlots).fill(null).map((_, i) => draft.images[i] ?? null);
+                setImages(padded);
+            }
             if (draft.ratio) setRatio(draft.ratio);
             if (draft.spacing !== undefined) setSpacing(draft.spacing);
             if (draft.bgColor) setBgColor(draft.bgColor);
             if (draft.cornerRadius !== undefined) setCornerRadius(draft.cornerRadius);
-            if (draft.transforms) setTransforms(draft.transforms);
+            if (Array.isArray(draft.transforms)) {
+                const padded = Array(targetSlots).fill(null).map((_, i) => {
+                    const t = draft.transforms[i];
+                    return t && typeof t === 'object' ? { ...DEFAULT_T, ...t } : { ...DEFAULT_T };
+                });
+                setTransforms(padded);
+            }
             if (Array.isArray(draft.texts)) setTexts(draft.texts);
         } catch { /* ignore */ }
     }, []);
@@ -441,7 +454,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         setImages(Array(currentLayout.slots).fill(null));
         setTransforms(Array(currentLayout.slots).fill(null).map(() => ({ ...DEFAULT_T })));
         setSpacing(8);
-        setBgColor('#000000');
+        setBgColor('#FFFFFF');
         setCornerRadius(8);
         setSwapMode(false);
         setSwapFrom(null);

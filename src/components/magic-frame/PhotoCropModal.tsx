@@ -33,13 +33,19 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
             setImg(null);
             return;
         }
+        let cancelled = false;
         const i = new window.Image();
         i.onload = () => {
+            if (cancelled) return;
             setImg(i);
             setZoom(1);
             setPan({ x: 0, y: 0 });
         };
         i.src = imageSrc;
+        return () => {
+            cancelled = true;
+            i.onload = null;
+        };
     }, [imageSrc]);
 
     const imgW = img?.naturalWidth ?? 0;
