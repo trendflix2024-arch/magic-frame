@@ -173,6 +173,8 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
                                             top: (frameH - displayH) / 2 + pan.y,
                                             width: displayW,
                                             height: displayH,
+                                            maxWidth: 'none',
+                                            maxHeight: 'none',
                                             pointerEvents: 'none',
                                             userSelect: 'none',
                                         }}
