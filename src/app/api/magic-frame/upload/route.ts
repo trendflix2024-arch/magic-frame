@@ -55,12 +55,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: `업로드 실패: ${uploadError.message}` }, { status: 500 });
         }
 
-        // Get public URL
+        // Get public URL (cache-bust 파라미터로 재제출 시 CDN 캐시 우회)
         const { data: urlData } = supabaseAdmin.storage
             .from('magic-frame')
             .getPublicUrl(filename);
 
-        const publicUrl = urlData.publicUrl;
+        const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
 
         // Update user record
         const { error: updateError } = await supabaseAdmin

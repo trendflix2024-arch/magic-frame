@@ -65,7 +65,7 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
             const pts = Array.from(touchesRef.current.values());
             const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
             const scale = dist / pinchRef.current.startDist;
-            setZoom(Math.min(4, Math.max(1, pinchRef.current.startZoom * scale)));
+            setZoom(Math.min(4, Math.max(0.3, pinchRef.current.startZoom * scale)));
         } else if (touchesRef.current.size === 1 && dragRef.current) {
             const dx = e.clientX - dragRef.current.sx;
             const dy = e.clientY - dragRef.current.sy;
@@ -90,13 +90,24 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
         const displayH = imgH * displayScale;
         const imgLeft = (frameW - displayW) / 2 + pan.x;
         const imgTop = (frameH - displayH) / 2 + pan.y;
-        const sx = Math.max(0, -imgLeft / displayScale);
-        const sy = Math.max(0, -imgTop / displayScale);
-        const sw = Math.min(imgW - sx, frameW / displayScale);
-        const sh = Math.min(imgH - sy, frameH / displayScale);
 
-        const outW = Math.max(1, Math.round(sw));
-        const outH = Math.max(1, Math.round(outW / aspect));
+        // Frame expressed in image-pixel coords (may extend beyond image bounds at zoom<1)
+        const visibleW = frameW / displayScale;
+        const visibleH = frameH / displayScale;
+        const visibleLeftInImg = -imgLeft / displayScale;
+        const visibleTopInImg = -imgTop / displayScale;
+
+        // Output canvas matches frame aspect; 1:1 with image natural pixels, capped
+        const MAX_OUT = 2400;
+        let outW = Math.round(visibleW);
+        let outH = Math.round(visibleH);
+        if (outW > MAX_OUT) {
+            outH = Math.round(outH * (MAX_OUT / outW));
+            outW = MAX_OUT;
+        }
+        outW = Math.max(1, outW);
+        outH = Math.max(1, outH);
+
         const canvas = document.createElement('canvas');
         canvas.width = outW;
         canvas.height = outH;
@@ -104,7 +115,14 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
         if (!ctx) return;
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, outW, outH);
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+
+        const outScale = outW / visibleW;
+        const dx = -visibleLeftInImg * outScale;
+        const dy = -visibleTopInImg * outScale;
+        const dw = imgW * outScale;
+        const dh = imgH * outScale;
+        ctx.drawImage(img, 0, 0, imgW, imgH, dx, dy, dw, dh);
+
         onApply(canvas.toDataURL('image/jpeg', 0.92));
     };
 
@@ -135,24 +153,26 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
                             onPointerUp={handlePointerUp}
                             onPointerCancel={handlePointerUp}
                         >
-                            {img && (
-                                <img
-                                    src={imageSrc}
-                                    alt=""
-                                    draggable={false}
-                                    style={{
-                                        position: 'absolute',
-                                        inset: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        objectFit: 'cover',
-                                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                                        transformOrigin: 'center',
-                                        pointerEvents: 'none',
-                                        userSelect: 'none',
-                                    }}
-                                />
-                            )}
+                            {img && (() => {
+                                const displayW = imgW * coverScale * zoom;
+                                const displayH = imgH * coverScale * zoom;
+                                return (
+                                    <img
+                                        src={imageSrc}
+                                        alt=""
+                                        draggable={false}
+                                        style={{
+                                            position: 'absolute',
+                                            left: (frameW - displayW) / 2 + pan.x,
+                                            top: (frameH - displayH) / 2 + pan.y,
+                                            width: displayW,
+                                            height: displayH,
+                                            pointerEvents: 'none',
+                                            userSelect: 'none',
+                                        }}
+                                    />
+                                );
+                            })()}
                             <div className="absolute inset-0 pointer-events-none border-2 border-white/90 rounded-xl" />
                             <div className="absolute inset-0 pointer-events-none">
                                 <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30" />
@@ -167,7 +187,7 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
                         <ZoomOut size={14} className="text-slate-400 flex-shrink-0" />
                         <input
                             type="range"
-                            min={100}
+                            min={30}
                             max={400}
                             value={Math.round(zoom * 100)}
                             onChange={e => setZoom(Number(e.target.value) / 100)}
