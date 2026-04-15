@@ -171,9 +171,9 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const [layout, setLayout] = useState<string>('4-grid');
     const [images, setImages] = useState<(string | null)[]>(Array(4).fill(null));
     const [ratio, setRatio] = useState<'3:4' | '4:3'>('3:4');
-    const [spacing, setSpacing] = useState(8);
+    const [spacing, setSpacing] = useState(0);
     const [bgColor, setBgColor] = useState('#FFFFFF');
-    const [cornerRadius, setCornerRadius] = useState(8);
+    const [cornerRadius, setCornerRadius] = useState(0);
     const [filterSlots, setFilterSlots] = useState<number | null>(null);
     const [transforms, setTransforms] = useState<SlotTransform[]>(
         Array(4).fill(null).map(() => ({ ...DEFAULT_T }))
@@ -453,9 +453,9 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const reset = () => {
         setImages(Array(currentLayout.slots).fill(null));
         setTransforms(Array(currentLayout.slots).fill(null).map(() => ({ ...DEFAULT_T })));
-        setSpacing(8);
+        setSpacing(0);
         setBgColor('#FFFFFF');
-        setCornerRadius(8);
+        setCornerRadius(0);
         setSwapMode(false);
         setSwapFrom(null);
         setTexts([]);
