@@ -3,12 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    Search, ArrowUpDown, Loader2, Upload, Download, X,
+    Search, ArrowUpDown, Loader2, Upload, Download, X, UserPlus,
     Clock, Package, PackageCheck, Truck, AlertCircle, Trash2, ShoppingBag,
     ChevronLeft, ChevronRight, Calendar, Users, Sparkles, CircleDollarSign,
 } from 'lucide-react';
 import { adminFetch } from '@/lib/admin-token';
 import { CsvImportModal } from './CsvImportModal';
+import { SingleRegisterModal } from './SingleRegisterModal';
 import { TrackingImportModal } from './TrackingImportModal';
 import { BatchActionBar } from './BatchActionBar';
 import { OrderCard, type UnifiedOrder, PIPELINE_CONFIG, type PipelineStatus, formatPhone } from './OrderCard';
@@ -86,6 +87,7 @@ export function OrdersTab() {
 
     // Modals
     const [csvModalOpen, setCsvModalOpen] = useState(false);
+    const [singleRegModalOpen, setSingleRegModalOpen] = useState(false);
     const [trackingModalOpen, setTrackingModalOpen] = useState(false);
     const [detailOrder, setDetailOrder] = useState<UnifiedOrder | null>(null);
     const [lightbox, setLightbox] = useState<string | null>(null);
@@ -128,6 +130,12 @@ export function OrdersTab() {
     }, [buildQueryParams, page]);
 
     useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+    // 15분마다 자동 새로고침
+    useEffect(() => {
+        const id = setInterval(() => { fetchOrders(); }, 15 * 60 * 1000);
+        return () => clearInterval(id);
+    }, [fetchOrders]);
 
     // Reset to page 0 when filters change
     useEffect(() => { setPage(0); }, [search, statusFilter, sort, datePreset]);
@@ -377,6 +385,10 @@ export function OrdersTab() {
                         className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap">
                         <Upload size={12} /> <span className="hidden sm:inline">고객 등록</span>
                     </button>
+                    <button onClick={() => setSingleRegModalOpen(true)}
+                        className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap">
+                        <UserPlus size={12} /> <span className="hidden sm:inline">개별 등록</span>
+                    </button>
                     <button onClick={() => setTrackingModalOpen(true)}
                         className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors whitespace-nowrap">
                         <Upload size={12} /> <span className="hidden sm:inline">운송장</span>
@@ -501,6 +513,7 @@ export function OrdersTab() {
 
             {/* CSV Import Modal */}
             <CsvImportModal open={csvModalOpen} onClose={() => setCsvModalOpen(false)} onImportComplete={fetchOrders} />
+            <SingleRegisterModal open={singleRegModalOpen} onClose={() => setSingleRegModalOpen(false)} onSuccess={fetchOrders} />
             <TrackingImportModal open={trackingModalOpen} onClose={() => setTrackingModalOpen(false)} onImportComplete={fetchOrders} />
 
             {/* Order Detail Modal */}
