@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
 
-const USER_COLUMNS = 'id, name, phone, submitted, image_url, image_type, updated_at, created_at, shipping_status, address, postal_code, address_detail, tracking_number, shipping_carrier, shipping_memo, shipped_at';
+const USER_COLUMNS = 'id, name, haengbun, phone, submitted, image_url, image_type, updated_at, created_at, shipping_status, address, postal_code, address_detail, tracking_number, shipping_carrier, shipping_memo, shipped_at';
 
-// Unified status mapping
 function getUnifiedStatus(submitted: boolean, shippingStatus: string): string {
     if (!submitted) return 'waiting';
     switch (shippingStatus) {
@@ -16,6 +15,63 @@ function getUnifiedStatus(submitted: boolean, shippingStatus: string): string {
     }
 }
 
+interface FilterParams {
+    search: string;
+    status: string;
+    dateFrom: string;
+    dateTo: string;
+    allowedUserIds?: string[] | null;
+    excludedUserIds?: string[] | null;
+}
+
+function buildUserQuery(params: FilterParams, forCount = false) {
+    let q = supabaseAdmin
+        .from('magic_frame_users')
+        .select(forCount ? 'id' : USER_COLUMNS, forCount ? { count: 'exact', head: true } : undefined);
+
+    if (params.search) {
+        q = q.or(`name.ilike.%${params.search}%,phone.ilike.%${params.search}%,haengbun.ilike.%${params.search}%`);
+    }
+    if (params.dateFrom) q = q.gte('created_at', params.dateFrom);
+    if (params.dateTo) q = q.lte('created_at', params.dateTo);
+
+    if (params.allowedUserIds) {
+        if (params.allowedUserIds.length === 0) q = q.eq('id', '__none__');
+        else q = q.in('id', params.allowedUserIds);
+    }
+    if (params.excludedUserIds && params.excludedUserIds.length) {
+        q = q.not('id', 'in', `(${params.excludedUserIds.join(',')})`);
+    }
+
+    switch (params.status) {
+        case 'waiting': q = q.eq('submitted', false); break;
+        case 'received': q = q.eq('submitted', true).eq('shipping_status', 'pending'); break;
+        case 'producing': q = q.eq('submitted', true).eq('shipping_status', 'new_order'); break;
+        case 'preparing': q = q.eq('submitted', true).eq('shipping_status', 'preparing'); break;
+        case 'shipped': q = q.eq('submitted', true).eq('shipping_status', 'shipped'); break;
+    }
+    return q;
+}
+
+async function resolveSourceFilter(source: string): Promise<{ allowedUserIds: string[] | null; excludedUserIds: string[] | null }> {
+    if (source === 'all') return { allowedUserIds: null, excludedUserIds: null };
+    const { data: blob } = await supabaseAdmin.storage.from('magic-frame').download('user-sources.json');
+    let map: Record<string, string> = {};
+    if (blob) {
+        try { map = JSON.parse(await blob.text()); } catch { map = {}; }
+    }
+    if (source === 'gajeong') {
+        const excludedUserIds = Object.entries(map)
+            .filter(([, src]) => src && src !== 'gajeong')
+            .map(([uid]) => uid);
+        return { allowedUserIds: null, excludedUserIds };
+    }
+    const allowedUserIds = Object.entries(map)
+        .filter(([, src]) => src === source)
+        .map(([uid]) => uid);
+    return { allowedUserIds, excludedUserIds: null };
+}
+
 export async function GET(req: NextRequest) {
     if (!await checkAdminAuth(req)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -24,103 +80,90 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const search = url.searchParams.get('search') || '';
     const status = url.searchParams.get('status') || 'all';
+    const source = url.searchParams.get('source') || 'all';
     const sort = url.searchParams.get('sort') || 'recent';
+    const dateFrom = url.searchParams.get('dateFrom') || '';
+    const dateTo = url.searchParams.get('dateTo') || '';
+    const limit = Math.min(Number(url.searchParams.get('limit') || '50'), 200);
+    const offset = Math.max(Number(url.searchParams.get('offset') || '0'), 0);
 
-    // 1. Fetch users
-    let userQuery = supabaseAdmin
-        .from('magic_frame_users')
-        .select(USER_COLUMNS);
+    const { allowedUserIds, excludedUserIds } = await resolveSourceFilter(source);
+    const filterParams: FilterParams = { search, status, dateFrom, dateTo, allowedUserIds, excludedUserIds };
 
-    if (search) {
-        userQuery = userQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
-    }
+    // 1. Paginated users query
+    let userQuery = buildUserQuery(filterParams, false) as any;
+    if (sort === 'name') userQuery = userQuery.order('name', { ascending: true });
+    else userQuery = userQuery.order('updated_at', { ascending: false, nullsFirst: false });
+    userQuery = userQuery.range(offset, offset + limit - 1);
 
-    // Pre-filter by DB fields when possible
-    if (status === 'waiting') {
-        userQuery = userQuery.eq('submitted', false);
-    } else if (status === 'received') {
-        userQuery = userQuery.eq('submitted', true).eq('shipping_status', 'pending');
-    } else if (status === 'producing') {
-        userQuery = userQuery.eq('submitted', true).eq('shipping_status', 'new_order');
-    } else if (status === 'preparing') {
-        userQuery = userQuery.eq('submitted', true).eq('shipping_status', 'preparing');
-    } else if (status === 'shipped') {
-        userQuery = userQuery.eq('submitted', true).eq('shipping_status', 'shipped');
-    }
+    // 2. Total count for current filter
+    const countQuery = buildUserQuery(filterParams, true) as any;
 
-    if (sort === 'name') {
-        userQuery = userQuery.order('name', { ascending: true });
-    } else {
-        userQuery = userQuery.order('updated_at', { ascending: false, nullsFirst: false });
-    }
+    // 3. Pipeline counts (always unfiltered by status, respects search/date/source)
+    const baseCountParams: FilterParams = { search, dateFrom, dateTo, status: 'all', allowedUserIds, excludedUserIds };
+    const allCountQ = buildUserQuery({ ...baseCountParams, status: 'all' }, true) as any;
+    const waitingCountQ = buildUserQuery({ ...baseCountParams, status: 'waiting' }, true) as any;
+    const receivedCountQ = buildUserQuery({ ...baseCountParams, status: 'received' }, true) as any;
+    const producingCountQ = buildUserQuery({ ...baseCountParams, status: 'producing' }, true) as any;
+    const preparingCountQ = buildUserQuery({ ...baseCountParams, status: 'preparing' }, true) as any;
+    const shippedCountQ = buildUserQuery({ ...baseCountParams, status: 'shipped' }, true) as any;
 
-    const { data: users, error: usersError } = await userQuery;
+    // 4. KPI: period new (= filtered total ignoring status). When date filter is "all" this equals total.
+    const periodNewQ = buildUserQuery({ ...filterParams, status: 'all' }, true) as any;
+
+    // Run all in parallel
+    const [
+        { data: users, error: usersError },
+        { count: total },
+        { count: allCount },
+        { count: waitingCount },
+        { count: receivedCount },
+        { count: producingCount },
+        { count: preparingCount },
+        { count: shippedCount },
+        { count: periodNew },
+    ] = await Promise.all([
+        userQuery, countQuery, allCountQ, waitingCountQ, receivedCountQ, producingCountQ, preparingCountQ, shippedCountQ, periodNewQ,
+    ]);
 
     if (usersError) {
         return NextResponse.json({ error: usersError.message }, { status: 500 });
     }
 
-    // 2. Fetch all orders
-    const { data: orders, error: ordersError } = await supabaseAdmin
-        .from('magic_frame_orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+    // 5. Fetch add-on orders for the users on this page (N+1 avoided)
+    const userIds = (users || []).map((u: any) => u.id);
+    const { data: orders } = userIds.length
+        ? await supabaseAdmin.from('magic_frame_orders').select('*').in('user_id', userIds)
+        : { data: [] as any[] };
 
-    if (ordersError) {
-        console.warn('Orders fetch error (continuing without orders):', ordersError.message);
-    }
-
-    // 3. Group orders by user_id
     const ordersByUser: Record<string, any[]> = {};
-    if (orders) {
-        for (const order of orders) {
-            (ordersByUser[order.user_id] ||= []).push(order);
-        }
+    for (const order of orders || []) {
+        (ordersByUser[order.user_id] ||= []).push(order);
     }
 
-    // 4. Build unified response
-    const unified = (users || []).map(user => ({
+    const unified = (users || []).map((user: any) => ({
         ...user,
         unified_status: getUnifiedStatus(user.submitted, user.shipping_status || 'pending'),
         addon_orders: ordersByUser[user.id] || [],
     }));
 
-    // 5. Compute counts for all statuses (before filtering)
-    // If we pre-filtered, we need separate count query
-    let counts;
-    if (status === 'all' && !search) {
-        counts = {
-            waiting: unified.filter(u => u.unified_status === 'waiting').length,
-            received: unified.filter(u => u.unified_status === 'received').length,
-            producing: unified.filter(u => u.unified_status === 'producing').length,
-            preparing: unified.filter(u => u.unified_status === 'preparing').length,
-            shipped: unified.filter(u => u.unified_status === 'shipped').length,
-            total: unified.length,
-        };
-    } else {
-        // Fetch counts separately
-        const { count: totalCount } = await supabaseAdmin
-            .from('magic_frame_users').select('*', { count: 'exact', head: true });
-        const { count: waitingCount } = await supabaseAdmin
-            .from('magic_frame_users').select('*', { count: 'exact', head: true }).eq('submitted', false);
-        const { count: receivedCount } = await supabaseAdmin
-            .from('magic_frame_users').select('*', { count: 'exact', head: true }).eq('submitted', true).eq('shipping_status', 'pending');
-        const { count: producingCount } = await supabaseAdmin
-            .from('magic_frame_users').select('*', { count: 'exact', head: true }).eq('submitted', true).eq('shipping_status', 'new_order');
-        const { count: preparingCount } = await supabaseAdmin
-            .from('magic_frame_users').select('*', { count: 'exact', head: true }).eq('submitted', true).eq('shipping_status', 'preparing');
-        const { count: shippedCount } = await supabaseAdmin
-            .from('magic_frame_users').select('*', { count: 'exact', head: true }).eq('submitted', true).eq('shipping_status', 'shipped');
-
-        counts = {
+    return NextResponse.json({
+        orders: unified,
+        total: total || 0,
+        limit,
+        offset,
+        counts: {
             waiting: waitingCount || 0,
             received: receivedCount || 0,
             producing: producingCount || 0,
             preparing: preparingCount || 0,
             shipped: shippedCount || 0,
-            total: totalCount || 0,
-        };
-    }
-
-    return NextResponse.json({ orders: unified, counts });
+            total: allCount || 0,
+        },
+        kpi: {
+            total: allCount || 0,
+            todayNew: periodNew || 0,
+            pendingShipment: (receivedCount || 0) + (producingCount || 0) + (preparingCount || 0),
+        },
+    });
 }

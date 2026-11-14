@@ -12,7 +12,7 @@ const SHIPPING_STATUS_OPTIONS = [
 
 interface BatchActionBarProps {
     selectedCount: number;
-    onStatusChange: (status: string) => Promise<void>;
+    onStatusChange: (status: string, label: string) => void | Promise<void>;
     onClearSelection: () => void;
 }
 
@@ -20,11 +20,11 @@ export function BatchActionBar({ selectedCount, onStatusChange, onClearSelection
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const handleStatusChange = async (status: string) => {
+    const handleStatusChange = async (status: string, label: string) => {
         setLoading(true);
         setOpen(false);
         try {
-            await onStatusChange(status);
+            await onStatusChange(status, label);
         } finally {
             setLoading(false);
         }
@@ -51,7 +51,7 @@ export function BatchActionBar({ selectedCount, onStatusChange, onClearSelection
                             <div className="absolute right-0 bottom-full mb-1 bg-white rounded-lg shadow-xl border border-slate-200 py-1 z-20 min-w-[120px]">
                                 {SHIPPING_STATUS_OPTIONS.map(opt => (
                                     <button key={opt.value}
-                                        onClick={() => handleStatusChange(opt.value)}
+                                        onClick={() => handleStatusChange(opt.value, opt.label)}
                                         className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
                                         {opt.label}
                                     </button>

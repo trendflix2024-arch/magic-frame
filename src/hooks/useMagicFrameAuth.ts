@@ -15,12 +15,12 @@ export function useMagicFrameAuth(requireAuth = true) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const raw = sessionStorage.getItem('magic_frame_session');
+        const raw = localStorage.getItem('magic_frame_session');
         if (raw) {
             try {
                 setSession(JSON.parse(raw));
             } catch {
-                sessionStorage.removeItem('magic_frame_session');
+                localStorage.removeItem('magic_frame_session');
             }
         }
         setLoading(false);
@@ -33,12 +33,12 @@ export function useMagicFrameAuth(requireAuth = true) {
     }, [loading, session, requireAuth, router]);
 
     const login = (data: MFSession) => {
-        sessionStorage.setItem('magic_frame_session', JSON.stringify(data));
+        localStorage.setItem('magic_frame_session', JSON.stringify(data));
         setSession(data);
     };
 
     const logout = () => {
-        sessionStorage.removeItem('magic_frame_session');
+        localStorage.removeItem('magic_frame_session');
         setSession(null);
     };
 

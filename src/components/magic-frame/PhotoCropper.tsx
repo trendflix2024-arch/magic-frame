@@ -11,6 +11,10 @@ import {
     formatPickedDate,
     todayIso,
 } from './textPresets';
+import { saveDraftValue, loadDraftValue, clearDraftValue } from '@/lib/magic-frame-draft-storage';
+import { ensureJpeg, isHeic } from '@/lib/heic-convert';
+
+const DRAFT_IMAGE_KEY = 'crop_image';
 
 export interface TextLayer {
     id: string;
@@ -48,6 +52,17 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     const [ratio, setRatio] = useState<'3:4' | '4:3'>('3:4');
     const [zoom, setZoom] = useState(100);
+    const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
+
+    // imageSrc 로딩 → preview 의 coverScale·displayW/H 계산용
+    useEffect(() => {
+        if (!imageSrc) { setImgEl(null); return; }
+        let cancelled = false;
+        const i = new window.Image();
+        i.onload = () => { if (!cancelled) setImgEl(i); };
+        i.src = imageSrc;
+        return () => { cancelled = true; i.onload = null; };
+    }, [imageSrc]);
     const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
@@ -116,44 +131,78 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
         textDragRef.current = null;
     };
 
-    // 임시 저장 불러오기
+    // 임시 저장 불러오기 — 설정은 localStorage, 사진은 IndexedDB
     useEffect(() => {
-        try {
-            const saved = localStorage.getItem('magic_frame_crop_draft');
-            if (!saved) return;
-            const draft = JSON.parse(saved);
-            if (draft.imageSrc) setImageSrc(draft.imageSrc);
-            if (draft.ratio) setRatio(draft.ratio);
-            if (draft.zoom) setZoom(draft.zoom);
-            if (draft.panOffset) setPanOffset(draft.panOffset);
-            if (draft.filterValues) setFilterValues(draft.filterValues);
-            if (draft.activePreset) setActivePreset(draft.activePreset);
-            if (Array.isArray(draft.texts)) setTexts(draft.texts);
-        } catch { /* ignore */ }
+        (async () => {
+            try {
+                const saved = localStorage.getItem('magic_frame_crop_draft');
+                if (saved) {
+                    const draft = JSON.parse(saved);
+                    if (draft.ratio) setRatio(draft.ratio);
+                    if (draft.zoom) setZoom(draft.zoom);
+                    if (draft.panOffset) setPanOffset(draft.panOffset);
+                    if (draft.filterValues) setFilterValues(draft.filterValues);
+                    if (draft.activePreset) setActivePreset(draft.activePreset);
+                    if (Array.isArray(draft.texts)) setTexts(draft.texts);
+                }
+                const img = await loadDraftValue(DRAFT_IMAGE_KEY);
+                if (img) setImageSrc(img);
+            } catch { /* ignore */ }
+        })();
     }, []);
 
-    const handleTempSave = () => {
-        const draft = { imageSrc, ratio, zoom, panOffset, filterValues, activePreset, texts };
-        localStorage.setItem('magic_frame_crop_draft', JSON.stringify(draft));
-        setSavedToast(true);
-        setTimeout(() => setSavedToast(false), 2000);
+    const handleTempSave = async () => {
+        try {
+            const settings = { ratio, zoom, panOffset, filterValues, activePreset, texts };
+            localStorage.setItem('magic_frame_crop_draft', JSON.stringify(settings));
+            if (imageSrc) {
+                await saveDraftValue(DRAFT_IMAGE_KEY, imageSrc);
+            } else {
+                await clearDraftValue(DRAFT_IMAGE_KEY);
+            }
+            setSavedToast(true);
+            setTimeout(() => setSavedToast(false), 2000);
+        } catch (e) {
+            console.error('Temp save failed:', e);
+            alert('임시저장에 실패했습니다. 저장 공간이 부족할 수 있습니다.');
+        }
     };
 
     const isPortrait = ratio === '3:4';
-    const previewW = isPortrait ? 320 : 400;
-    const previewH = isPortrait ? Math.round(320 * 4 / 3) : 300;
+    // 뷰포트 기반 동적 폭 — 좁은 화면 가로 스크롤 방지
+    const [vpW, setVpW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
+    useEffect(() => {
+        const onResize = () => setVpW(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+    const portraitMax = 320, landscapeMax = 400;
+    const available = vpW - 80;
+    const previewW = Math.max(220, Math.min(isPortrait ? portraitMax : landscapeMax, available));
+    const previewH = isPortrait ? Math.round(previewW * 4 / 3) : Math.round(previewW * 3 / 4);
 
-    const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const [converting, setConverting] = useState(false);
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            setImageSrc(reader.result as string);
-            setZoom(100);
-            setPanOffset({ x: 0, y: 0 });
-        };
-        reader.readAsDataURL(file);
         e.target.value = '';
+        if (!file) return;
+        try {
+            const wasHeic = isHeic(file);
+            if (wasHeic) setConverting(true);
+            const blob = await ensureJpeg(file);
+            const reader = new FileReader();
+            reader.onload = () => {
+                setImageSrc(reader.result as string);
+                setZoom(100);
+                setPanOffset({ x: 0, y: 0 });
+            };
+            reader.readAsDataURL(blob);
+        } catch (err) {
+            console.error('HEIC 변환 실패:', err);
+            alert('이 사진을 불러올 수 없습니다. (지원 안 되는 형식)');
+        } finally {
+            setConverting(false);
+        }
     };
 
     const replaceImage = () => fileRef.current?.click();
@@ -167,6 +216,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
         setTexts([]);
         setSelectedTextId(null);
         localStorage.removeItem('magic_frame_crop_draft');
+        clearDraftValue(DRAFT_IMAGE_KEY).catch(() => { });
     };
 
     const handleFilterChange = (key: keyof FilterValues, value: number) => {
@@ -199,7 +249,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
         const onWheel = (e: WheelEvent) => {
             if (!imageSrc) return;
             e.preventDefault();
-            setZoom(prev => Math.min(300, Math.max(100, prev - e.deltaY * 0.5)));
+            setZoom(prev => Math.min(300, Math.max(30, prev - e.deltaY * 0.5)));
         };
         el.addEventListener('wheel', onWheel, { passive: false });
         return () => el.removeEventListener('wheel', onWheel);
@@ -228,7 +278,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
             const dist = getTouchDist(touchesRef.current);
             if (pinchStartDist.current > 0) {
                 const scale = dist / pinchStartDist.current;
-                setZoom(Math.min(300, Math.max(100, Math.round(pinchStartZoom.current * scale))));
+                setZoom(Math.min(300, Math.max(30, Math.round(pinchStartZoom.current * scale))));
             }
         } else if (isDragging && touchesRef.current.size === 1) {
             const dx = e.clientX - dragStart.current.x;
@@ -257,7 +307,8 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
             i.src = imageSrc;
         });
 
-        // Output size based on original image resolution
+        // Output size based on original image resolution (Vercel 4.5MB body limit 회피용 최대 변 캡)
+        const MAX_DIM = 3200;
         const targetRatio = isPortrait ? 3 / 4 : 4 / 3;
         let outputW: number, outputH: number;
         if (img.width / img.height > targetRatio) {
@@ -267,13 +318,20 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
             outputW = img.width;
             outputH = Math.round(img.width / targetRatio);
         }
+        const longest = Math.max(outputW, outputH);
+        if (longest > MAX_DIM) {
+            const scale = MAX_DIM / longest;
+            outputW = Math.round(outputW * scale);
+            outputH = Math.round(outputH * scale);
+        }
 
         const canvas = document.createElement('canvas');
         canvas.width = outputW;
         canvas.height = outputH;
         const ctx = canvas.getContext('2d')!;
 
-        ctx.fillStyle = '#1e293b';
+        // 빈 영역(축소 시) 색 — 검정/슬레이트면 "사진 까맣다" 민원 유발
+        ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, outputW, outputH);
 
         // Scale factor from preview to output
@@ -319,42 +377,72 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
         }
         ctx.shadowColor = 'transparent';
 
-        return new Promise(resolve => {
-            canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.92);
+        // Vercel 엣지 4.5MB body limit 회피 — 4MB 이하가 될 때까지 quality 단계적 감소
+        const MAX_BYTES = 4 * 1024 * 1024;
+        const QUALITIES = [0.92, 0.85, 0.78, 0.7, 0.6, 0.5];
+        const toBlob = (q: number) => new Promise<Blob | null>(resolve => {
+            canvas.toBlob(b => resolve(b), 'image/jpeg', q);
         });
+        let last: Blob | null = null;
+        for (const q of QUALITIES) {
+            const b = await toBlob(q);
+            if (!b) continue;
+            last = b;
+            if (b.size <= MAX_BYTES) break;
+        }
+        return last;
     }, [imageSrc, zoom, panOffset, filterValues, texts, isPortrait, previewW, previewH]);
 
     const handleFinalize = async () => {
         const blob = await renderFinal();
         if (blob) {
             localStorage.removeItem('magic_frame_crop_draft');
+            clearDraftValue(DRAFT_IMAGE_KEY).catch(() => { });
             onFinalize(blob);
         }
     };
 
     return (
         <div className="flex flex-col lg:flex-row gap-6">
+            {converting && (
+                <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                    <div className="bg-white rounded-2xl px-6 py-5 shadow-2xl text-sm font-bold text-slate-700">
+                        아이폰 사진을 불러오는 중...
+                    </div>
+                </div>
+            )}
             {/* Preview */}
             <div className="flex-1 flex items-center justify-center">
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 inline-block">
                     <div ref={previewRef}
                         className="rounded-xl overflow-hidden relative select-none"
-                        style={{ width: `${previewW}px`, height: `${previewH}px`, backgroundColor: '#1e293b', touchAction: 'none' }}
+                        style={{ width: `${previewW}px`, height: `${previewH}px`, backgroundColor: '#FFFFFF', touchAction: 'none' }}
                         onClick={() => !imageSrc && fileRef.current?.click()}
                         onPointerDown={handlePointerDown}
                         onPointerMove={handlePointerMove}
                         onPointerUp={handlePointerUp}>
                         {imageSrc ? (
                             <>
-                                <img src={imageSrc} alt="preview" draggable={false}
-                                    className="absolute pointer-events-none"
-                                    style={{
-                                        width: '100%', height: '100%',
-                                        objectFit: 'cover',
-                                        transform: `scale(${zoom / 100}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-                                        filter: buildFilterString(filterValues),
-                                        cursor: 'grab',
-                                    }} />
+                                {imgEl && (() => {
+                                    const coverScale = Math.max(previewW / imgEl.naturalWidth, previewH / imgEl.naturalHeight);
+                                    const displayScale = coverScale * (zoom / 100);
+                                    const displayW = imgEl.naturalWidth * displayScale;
+                                    const displayH = imgEl.naturalHeight * displayScale;
+                                    return (
+                                        <img src={imageSrc} alt="preview" draggable={false}
+                                            className="absolute pointer-events-none"
+                                            style={{
+                                                left: (previewW - displayW) / 2 + panOffset.x,
+                                                top: (previewH - displayH) / 2 + panOffset.y,
+                                                width: displayW,
+                                                height: displayH,
+                                                maxWidth: 'none',
+                                                maxHeight: 'none',
+                                                filter: buildFilterString(filterValues),
+                                                userSelect: 'none',
+                                            }} />
+                                    );
+                                })()}
                                 {texts.map(t => (
                                     <div
                                         key={t.id}
@@ -397,7 +485,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
                 </div>
             </div>
 
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+            <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleFile} />
 
             {/* Controls */}
             <div className="lg:w-72 space-y-5 bg-white rounded-2xl p-5 border border-slate-100 shadow-sm h-fit">
@@ -428,7 +516,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
                         </label>
                         <span className="text-sm text-slate-400">{zoom}%</span>
                     </div>
-                    <input type="range" min={100} max={300} value={zoom}
+                    <input type="range" min={30} max={300} value={zoom}
                         onChange={e => setZoom(Number(e.target.value))}
                         className="w-full accent-indigo-600" />
                 </div>

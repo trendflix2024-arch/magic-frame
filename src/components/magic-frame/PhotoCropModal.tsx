@@ -10,7 +10,7 @@ interface PhotoCropModalProps {
     onCancel: () => void;
 }
 
-const MAX_FRAME_W = 320;
+const MAX_FRAME_W_DEFAULT = 320;
 const MAX_FRAME_H = 400;
 
 export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCropModalProps) {
@@ -20,6 +20,15 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
     const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
     const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
     const touchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+
+    // 뷰포트 기반 frame 폭 — 좁은 화면 가로 스크롤 방지
+    const [vpW, setVpW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
+    useEffect(() => {
+        const onResize = () => setVpW(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+    const MAX_FRAME_W = Math.max(220, Math.min(MAX_FRAME_W_DEFAULT, vpW - 72));
 
     let frameW = MAX_FRAME_W;
     let frameH = frameW / aspect;
@@ -119,7 +128,8 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
         canvas.height = outH;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        ctx.fillStyle = '#000000';
+        // 사용자가 cover 미만으로 축소했을 때 빈 영역 색 — 검정이면 "사진이 까맣다" 민원 유발
+        ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, outW, outH);
 
         const outScale = outW / visibleW;

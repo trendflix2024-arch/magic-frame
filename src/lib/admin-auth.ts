@@ -12,6 +12,9 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
  *   2. NextAuth session with email in ADMIN_EMAILS env var (Google OAuth)
  */
 export async function checkAdminAuth(req: NextRequest): Promise<boolean> {
+    // 0. Dev bypass — local testing skips admin login entirely
+    if (process.env.NODE_ENV === 'development') return true;
+
     // 1. Check token-based admin auth (name+phone login)
     if (ADMIN_TOKEN) {
         const token = req.headers.get('x-admin-token');

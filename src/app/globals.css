@@ -1,3 +1,5 @@
+/* 매직액자 텍스트 오버레이용 한글 폰트는 src/app/layout.tsx <link> 로 로드 */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

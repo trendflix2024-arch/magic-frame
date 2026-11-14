@@ -36,7 +36,7 @@ export default function MagicFrameComplete() {
 
         // 세션 정보 (결제에 필요)
         try {
-            const rawSession = sessionStorage.getItem('magic_frame_session');
+            const rawSession = localStorage.getItem('magic_frame_session');
             if (rawSession) setSession(JSON.parse(rawSession));
         } catch {}
     }, [router]);
@@ -111,65 +111,6 @@ export default function MagicFrameComplete() {
                         <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-md">
                             <img src={result.imageUrl} alt="제출된 사진" className="w-full" />
                         </div>
-                    )}
-
-                    {/* Product Recommendations */}
-                    {session && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3 }}
-                            className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4"
-                        >
-                            <div className="flex items-center justify-center gap-2">
-                                <ShoppingBag size={16} className="text-indigo-500" />
-                                <h3 className="text-sm font-bold text-slate-700">함께 배송 가능한 상품</h3>
-                            </div>
-                            <p className="text-xs text-slate-400">매직액자와 함께 받아보세요</p>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                {products.map((product, i) => (
-                                    <motion.div
-                                        key={product.id}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: 0.4 + i * 0.1 }}
-                                        className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-center space-y-2"
-                                    >
-                                        {/* Product Image or Emoji */}
-                                        {product.image_url ? (
-                                            <div className="w-16 h-16 rounded-xl overflow-hidden mx-auto">
-                                                <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                                            </div>
-                                        ) : (
-                                            <div className="text-3xl">{product.emoji}</div>
-                                        )}
-                                        <h4 className="text-sm font-bold text-slate-700">{product.name}</h4>
-                                        <p className="text-[11px] text-slate-400 leading-tight">{product.description}</p>
-                                        <p className="text-sm font-bold text-indigo-600">
-                                            ₩{product.price.toLocaleString()}
-                                        </p>
-                                        <div className="flex gap-1.5">
-                                            <button
-                                                onClick={() => handleProductPurchase(product)}
-                                                disabled={purchasingProduct !== null}
-                                                className={`${product.detail_url ? 'flex-1' : 'w-full'} py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1`}
-                                            >
-                                                {purchasingProduct === product.id
-                                                    ? <><Loader2 size={12} className="animate-spin" /> 처리 중...</>
-                                                    : '구매하기'}
-                                            </button>
-                                            {product.detail_url && (
-                                                <a href={product.detail_url} target="_blank" rel="noopener noreferrer"
-                                                    className="px-3 py-2 border border-indigo-200 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-0.5">
-                                                    <ExternalLink size={10} /> 자세히
-                                                </a>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
-                        </motion.div>
                     )}
 
                     {/* Contact */}

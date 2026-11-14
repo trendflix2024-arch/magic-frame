@@ -8,6 +8,7 @@ import { MagicFrameLayout } from '@/components/magic-frame/MagicFrameLayout';
 import { CollageMaker } from '@/components/magic-frame/CollageMaker';
 import { PhotoCropper } from '@/components/magic-frame/PhotoCropper';
 import { Gallery } from '@/components/magic-frame/Gallery';
+import { YoutubeCarousel } from '@/components/magic-frame/YoutubeCarousel';
 
 type Tool = 'collage' | 'crop' | 'gallery';
 
@@ -44,7 +45,10 @@ export default function MagicFramePreviewPage() {
                         transition={{ duration: 0.25 }}
                         className="max-w-sm mx-auto px-4 py-6 space-y-3"
                     >
-                        <p className="text-center text-base font-semibold text-slate-700 mb-6 break-keep">
+                        {/* 사용 가이드 영상 */}
+                        <YoutubeCarousel />
+
+                        <p className="text-center text-base font-semibold text-slate-700 pt-4 pb-2 break-keep">
                             어떤 방식으로 편집할까요?
                         </p>
 
@@ -61,7 +65,7 @@ export default function MagicFramePreviewPage() {
                             </div>
                             <div className="flex-1">
                                 <p className="font-bold text-slate-900 text-[15px] leading-snug">콜라주 메이커</p>
-                                <p className="text-[13px] text-slate-400 mt-1 break-keep leading-relaxed">최대 4장을 한 액자에 배치해요</p>
+                                <p className="text-[13px] text-slate-400 mt-1 break-keep leading-relaxed">최대 9장을 한 액자에 배치해요</p>
                             </div>
                             <ChevronRight size={18} className="text-slate-300 flex-shrink-0" />
                         </motion.button>

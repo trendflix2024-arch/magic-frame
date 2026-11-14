@@ -5,9 +5,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
     Search, ArrowUpDown, Loader2, Upload, Download, X,
     Clock, Package, PackageCheck, Truck, AlertCircle, Trash2, ShoppingBag,
-    ChevronLeft, ChevronRight, Calendar, Users, Sparkles, CircleDollarSign,
+    ChevronLeft, ChevronRight, Calendar, Users, Sparkles, Tag,
 } from 'lucide-react';
 import { adminFetch } from '@/lib/admin-token';
+import { ALL_SOURCES, getSource } from '@/lib/magic-frame-sources';
 import { CsvImportModal } from './CsvImportModal';
 import { TrackingImportModal } from './TrackingImportModal';
 import { BatchActionBar } from './BatchActionBar';
@@ -15,15 +16,10 @@ import { OrderCard, type UnifiedOrder, PIPELINE_CONFIG, type PipelineStatus, for
 import { OrderDetailModal } from './OrderDetailModal';
 
 type UnifiedStatus = 'all' | PipelineStatus;
-type SourceFilter = 'all' | 'gajeong' | 'coupang' | 'naver';
+type SourceFilter = 'all' | string;
 
 const PIPELINE_KEYS: PipelineStatus[] = ['waiting', 'received', 'producing', 'preparing', 'shipped'];
 
-const SOURCE_CONFIG: Record<string, { label: string; badge: string }> = {
-    gajeong: { label: '가정의달', badge: 'bg-indigo-100 text-indigo-600' },
-    coupang: { label: '쿠팡',    badge: 'bg-orange-100 text-orange-600' },
-    naver:   { label: '네이버',  badge: 'bg-green-100 text-green-700' },
-};
 
 interface Counts {
     waiting: number;
@@ -38,8 +34,6 @@ interface Kpi {
     total: number;
     todayNew: number;
     pendingShipment: number;
-    addonRevenue: number;
-    addonPending: number;
 }
 
 type DatePreset = 'all' | 'today' | 'week' | 'month';
@@ -61,7 +55,7 @@ function getDateRange(preset: DatePreset): { from: string; to: string } {
 export function OrdersTab() {
     const [orders, setOrders] = useState<UnifiedOrder[]>([]);
     const [counts, setCounts] = useState<Counts>({ waiting: 0, received: 0, producing: 0, preparing: 0, shipped: 0, total: 0 });
-    const [kpi, setKpi] = useState<Kpi>({ total: 0, todayNew: 0, pendingShipment: 0, addonRevenue: 0, addonPending: 0 });
+    const [kpi, setKpi] = useState<Kpi>({ total: 0, todayNew: 0, pendingShipment: 0 });
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -99,12 +93,13 @@ export function OrdersTab() {
         const params = new URLSearchParams();
         if (search) params.set('search', search);
         if (statusFilter !== 'all') params.set('status', statusFilter);
+        if (sourceFilter !== 'all') params.set('source', sourceFilter);
         params.set('sort', sort);
         const { from, to } = getDateRange(datePreset);
         if (from) params.set('dateFrom', from);
         if (to) params.set('dateTo', to);
         return params;
-    }, [search, statusFilter, sort, datePreset]);
+    }, [search, statusFilter, sourceFilter, sort, datePreset]);
 
     const fetchOrders = useCallback(async () => {
         setLoading(true);
@@ -118,7 +113,7 @@ export function OrdersTab() {
             if (data.error) { setError(data.error); return; }
             setOrders(data.orders || []);
             setCounts(data.counts || { waiting: 0, received: 0, producing: 0, preparing: 0, shipped: 0, total: 0 });
-            setKpi(data.kpi || { total: 0, todayNew: 0, pendingShipment: 0, addonRevenue: 0, addonPending: 0 });
+            setKpi(data.kpi || { total: 0, todayNew: 0, pendingShipment: 0 });
             setTotal(data.total || 0);
         } catch {
             setError('데이터를 불러올 수 없습니다.');
@@ -130,7 +125,7 @@ export function OrdersTab() {
     useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
     // Reset to page 0 when filters change
-    useEffect(() => { setPage(0); }, [search, statusFilter, sort, datePreset]);
+    useEffect(() => { setPage(0); }, [search, statusFilter, sourceFilter, sort, datePreset]);
 
     useEffect(() => {
         adminFetch('/api/magic-frame/admin/user-sources')
@@ -267,16 +262,12 @@ export function OrdersTab() {
         }
     };
 
-    const filteredOrders = sourceFilter === 'all'
-        ? orders
-        : orders.filter(o => (sourceMap[o.id] || 'gajeong') === sourceFilter);
-
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
     return (
         <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
                 <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
                         <Users size={11} /> 전체 고객
@@ -285,64 +276,61 @@ export function OrdersTab() {
                 </div>
                 <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
-                        <Sparkles size={11} className="text-emerald-500" /> 오늘 신규
+                        <Sparkles size={11} className="text-emerald-500" /> 기간 신규
                     </div>
-                    <p className="text-xl font-bold text-emerald-600 mt-1">+{kpi.todayNew}</p>
+                    <p className="text-xl font-bold text-emerald-600 mt-1">+{kpi.todayNew.toLocaleString()}</p>
                 </div>
                 <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
                         <Package size={11} className="text-amber-500" /> 미배송
                     </div>
-                    <p className="text-xl font-bold text-amber-600 mt-1">{kpi.pendingShipment}</p>
+                    <p className="text-xl font-bold text-amber-600 mt-1">{kpi.pendingShipment.toLocaleString()}</p>
                 </div>
-                <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
-                        <CircleDollarSign size={11} className="text-purple-500" /> 추가구매 매출
+            </div>
+
+            {/* Filter Card: 기간 + 출처 (segmented controls) */}
+            <div className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm space-y-2">
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400 w-12 flex-shrink-0">
+                        <Calendar size={12} /> 기간
                     </div>
-                    <p className="text-lg font-bold text-purple-600 mt-1">₩{kpi.addonRevenue.toLocaleString()}</p>
+                    <div className="flex gap-1 flex-1 min-w-0">
+                        {(['all', 'today', 'week', 'month'] as DatePreset[]).map(p => (
+                            <button key={p}
+                                onClick={() => setDatePreset(p)}
+                                className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                                    datePreset === p
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                                }`}>
+                                {p === 'all' ? '전체' : p === 'today' ? '오늘' : p === 'week' ? '이번주' : '이번달'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400 w-12 flex-shrink-0">
+                        <Tag size={12} /> 출처
+                    </div>
+                    <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
+                        aria-label="출처 필터"
+                        className={`flex-1 min-w-0 px-2 py-1.5 rounded-lg text-xs font-bold outline-none border-0 transition-all ${
+                            sourceFilter === 'all' ? 'bg-slate-50 text-slate-500' : 'bg-indigo-600 text-white'
+                        }`}>
+                        <option value="all">전체 출처</option>
+                        {ALL_SOURCES.map(s => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
-            {/* Date preset */}
-            <div className="flex items-center gap-1.5 overflow-x-auto">
-                <Calendar size={13} className="text-slate-400 flex-shrink-0" />
-                {(['all', 'today', 'week', 'month'] as DatePreset[]).map(p => (
-                    <button key={p}
-                        onClick={() => setDatePreset(p)}
-                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                            datePreset === p
-                                ? 'bg-indigo-600 text-white border-indigo-600'
-                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                        }`}>
-                        {p === 'all' ? '전체' : p === 'today' ? '오늘' : p === 'week' ? '이번주' : '이번달'}
-                    </button>
-                ))}
-            </div>
-
-            {/* Source Filter Bar */}
-            <div className="flex gap-2 overflow-x-auto pb-1">
-                {(['all', 'gajeong', 'coupang', 'naver'] as SourceFilter[]).map(s => (
-                    <button key={s}
-                        onClick={() => setSourceFilter(s)}
-                        className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                            sourceFilter === s
-                                ? s === 'coupang' ? 'bg-orange-500 text-white border-orange-500'
-                                : s === 'naver' ? 'bg-[#03C75A] text-white border-[#03C75A]'
-                                : s === 'gajeong' ? 'bg-indigo-500 text-white border-indigo-500'
-                                : 'bg-slate-800 text-white border-slate-800'
-                                : 'bg-white text-slate-500 border-slate-200'
-                        }`}>
-                        {s === 'all' ? '전체' : SOURCE_CONFIG[s].label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Pipeline Filter Bar */}
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            {/* Pipeline Filter Bar — uniform 6-col grid */}
+            <div className="grid grid-cols-6 gap-1.5">
                 <button
                     onClick={() => setStatusFilter('all')}
-                    className={`flex-shrink-0 bg-white rounded-xl px-4 py-3 border shadow-sm text-center transition-all min-w-[80px] ${statusFilter === 'all' ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
-                    <p className="text-xl font-bold text-slate-800">{counts.total}</p>
+                    className={`bg-white rounded-xl px-1 py-2.5 border shadow-sm text-center transition-all ${statusFilter === 'all' ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
+                    <p className="text-lg font-bold text-slate-800 leading-tight">{counts.total.toLocaleString()}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">전체</p>
                 </button>
                 {PIPELINE_KEYS.map(key => {
@@ -352,8 +340,8 @@ export function OrdersTab() {
                     return (
                         <button key={key}
                             onClick={() => setStatusFilter(statusFilter === key ? 'all' : key)}
-                            className={`flex-shrink-0 bg-white rounded-xl px-4 py-3 border shadow-sm text-center transition-all min-w-[80px] ${isActive ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
-                            <p className="text-xl font-bold text-slate-800">{count}</p>
+                            className={`bg-white rounded-xl px-1 py-2.5 border shadow-sm text-center transition-all ${isActive ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
+                            <p className="text-lg font-bold text-slate-800 leading-tight">{count.toLocaleString()}</p>
                             <p className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">{cfg.label}</p>
                         </button>
                     );
@@ -420,10 +408,10 @@ export function OrdersTab() {
                     {/* Select all */}
                     <div className="flex items-center gap-2 px-1">
                         <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
-                            <input type="checkbox" checked={selectedIds.size === filteredOrders.length && filteredOrders.length > 0}
+                            <input type="checkbox" checked={selectedIds.size === orders.length && orders.length > 0}
                                 onChange={toggleSelectAll}
                                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                            전체 선택 ({filteredOrders.length})
+                            전체 선택 ({orders.length})
                         </label>
                     </div>
 
@@ -432,9 +420,9 @@ export function OrdersTab() {
                     </div>
 
                     <div className="space-y-2">
-                        {filteredOrders.map(order => {
+                        {orders.map(order => {
                             const src = sourceMap[order.id];
-                            const srcCfg = src ? SOURCE_CONFIG[src] : null;
+                            const srcCfg = getSource(src);
                             return (
                                 <OrderCard
                                     key={order.id}

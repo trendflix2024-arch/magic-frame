@@ -70,31 +70,42 @@ export default function TrackPage() {
     const [notSubmitted, setNotSubmitted] = useState(false);
 
     useEffect(() => {
-        let name = sessionStorage.getItem("mf_name");
-        let phone = sessionStorage.getItem("mf_phone");
+        let name: string | null = sessionStorage.getItem("mf_name");
+        let haengbun: string | null = sessionStorage.getItem("mf_haengbun");
+        let phone: string | null = sessionStorage.getItem("mf_phone");
 
-        if (!name || !phone) {
-            const raw = sessionStorage.getItem("magic_frame_session");
-            if (raw) {
-                try {
+        // 폴백: localStorage 세션
+        if (!name || (!haengbun && !phone)) {
+            try {
+                const raw = localStorage.getItem("magic_frame_session");
+                if (raw) {
                     const s = JSON.parse(raw);
-                    name = s.name || null;
-                    phone = s.phone || null;
-                } catch { /* ignore */ }
-            }
+                    name = name || s.name || null;
+                    // 가정의달 유저는 로그인 시 세션의 phone 필드에 haengbun 이 저장되었을 수 있음
+                    if (s.source === 'gajeong') {
+                        haengbun = haengbun || s.haengbun || s.phone || null;
+                    } else {
+                        phone = phone || s.phone || null;
+                    }
+                }
+            } catch { /* ignore */ }
         }
 
-        if (!name || !phone) {
+        if (!name || (!haengbun && !phone)) {
             router.replace("/magic-frame/login");
             return;
         }
+
+        const body = haengbun
+            ? { name, haengbun }
+            : { name, phone };
 
         (async () => {
             try {
                 const res = await fetch("/api/magic-frame/track", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ name, phone }),
+                    body: JSON.stringify(body),
                 });
                 const data = await res.json();
 

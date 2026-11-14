@@ -1,30 +1,43 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Phone, ArrowRight, Loader2, AlertCircle, Mail, MessageCircle, RotateCcw, Package } from 'lucide-react';
+import { User, Hash, ArrowRight, Loader2, AlertCircle, Mail, MessageCircle, RotateCcw, Package } from 'lucide-react';
 import { MagicFrameLayout } from '@/components/magic-frame/MagicFrameLayout';
 import { KAKAO_CHANNEL_URL, SUPPORT_EMAIL } from '@/lib/magic-frame-config';
 import { setAdminToken } from '@/lib/admin-token';
 
-function formatPhone(value: string) {
-    const nums = value.replace(/[^0-9]/g, '').slice(0, 11);
-    if (nums.length <= 3) return nums;
-    if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`;
-    return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7)}`;
-}
+const SOURCE_LABEL: Record<string, string> = {
+    gajeong: '가정의 달',
+    coupang: '쿠팡',
+    naver: '네이버',
+};
 
-export default function MagicFrameLogin() {
+function MagicFrameLoginInner() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const source = searchParams.get('source') || 'gajeong';
+    const sourceLabel = SOURCE_LABEL[source] || '가정의 달';
     const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
+    const [haengbun, setHaengbun] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [submitted, setSubmitted] = useState(false);
     const [submittedUserId, setSubmittedUserId] = useState<string | null>(null);
     const [resetting, setResetting] = useState(false);
     const [resetError, setResetError] = useState('');
+
+    // 기존 세션이 있으면 편집 페이지로 자동 이동
+    useEffect(() => {
+        const raw = localStorage.getItem('magic_frame_session');
+        if (raw) {
+            try {
+                const s = JSON.parse(raw);
+                if (s?.userId) router.replace('/magic-frame/edit');
+            } catch { /* ignore */ }
+        }
+    }, [router]);
 
     const handleResubmit = useCallback(async () => {
         if (!submittedUserId) return;
@@ -41,11 +54,10 @@ export default function MagicFrameLogin() {
                 setResetError(data.error);
                 return;
             }
-            // Save session and go to edit
-            sessionStorage.setItem('magic_frame_session', JSON.stringify({
+            localStorage.setItem('magic_frame_session', JSON.stringify({
                 userId: submittedUserId,
                 name: name.trim(),
-                phone: phone.replace(/[^0-9]/g, ''),
+                phone: haengbun,
             }));
             router.push('/magic-frame/edit');
         } catch {
@@ -53,26 +65,25 @@ export default function MagicFrameLogin() {
         } finally {
             setResetting(false);
         }
-    }, [submittedUserId, name, phone, router]);
+    }, [submittedUserId, name, haengbun, router]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
         if (!name.trim()) { setError('이름을 입력해 주세요.'); return; }
-        const cleanPhone = phone.replace(/[^0-9]/g, '');
-        if (cleanPhone.length < 10) { setError('올바른 연락처를 입력해 주세요.'); return; }
+        const cleanHaengbun = haengbun.replace(/[^0-9]/g, '');
+        if (cleanHaengbun.length !== 7) { setError('행번 7자리를 입력해 주세요.'); return; }
 
         setLoading(true);
         try {
             const res = await fetch('/api/magic-frame/auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), phone: cleanPhone }),
+                body: JSON.stringify({ name: name.trim(), haengbun: cleanHaengbun, source }),
             });
             const data = await res.json();
 
-            // Admin login
             if (data.isAdmin) {
                 setAdminToken(data.adminToken);
                 router.push('/magic-frame/admin');
@@ -87,11 +98,11 @@ export default function MagicFrameLogin() {
 
             if (data.error) { setError(data.error); return; }
 
-            // Save session
-            sessionStorage.setItem('magic_frame_session', JSON.stringify({
+            localStorage.setItem('magic_frame_session', JSON.stringify({
                 userId: data.userId,
                 name: name.trim(),
-                phone: cleanPhone,
+                phone: cleanHaengbun,
+                source,
             }));
 
             router.push('/magic-frame/edit');
@@ -119,14 +130,12 @@ export default function MagicFrameLogin() {
                                 사진 변경을 원하시면 아래 버튼을 눌러 다시 제출하거나, 채널로 문의해 주세요.
                             </p>
 
-                            {/* 다시 제출 버튼 */}
                             <div className="space-y-3">
                                 {resetError && (
                                     <p className="text-red-500 text-xs flex items-center justify-center gap-1">
                                         <AlertCircle size={12} /> {resetError}
                                     </p>
                                 )}
-
                                 <button onClick={handleResubmit} disabled={resetting}
                                     className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:shadow-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                                     {resetting
@@ -135,10 +144,10 @@ export default function MagicFrameLogin() {
                                 </button>
                             </div>
 
-                            {/* 주문 현황 보기 */}
                             <button onClick={() => {
                                 sessionStorage.setItem('mf_name', name.trim());
-                                sessionStorage.setItem('mf_phone', phone.replace(/[^0-9]/g, ''));
+                                sessionStorage.setItem('mf_haengbun', haengbun);
+                                sessionStorage.removeItem('mf_phone');
                                 router.push('/magic-frame/track');
                             }}
                                 className="w-full py-4 bg-white border-2 border-indigo-200 text-indigo-600 font-bold rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-center gap-2">
@@ -160,13 +169,13 @@ export default function MagicFrameLogin() {
                         <motion.div key="form"
                             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                             <div className="text-center mb-8">
-                                <h1 className="text-2xl font-bold text-slate-800 mb-2">본인 확인</h1>
-                                <p className="text-sm text-slate-400">이름과 연락처를 입력해 주세요</p>
+                                <h1 className="text-2xl font-bold text-slate-800 mb-2">{sourceLabel} 구매자 본인 확인</h1>
+                                <p className="text-base text-slate-400">이름과 행번을 입력해 주세요</p>
                             </div>
 
                             <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 shadow-lg border border-slate-100 space-y-5">
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-2 block">이름</label>
+                                    <label className="text-sm font-bold text-slate-500 mb-2 block">이름</label>
                                     <div className="relative">
                                         <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input value={name} onChange={e => setName(e.target.value)}
@@ -176,20 +185,24 @@ export default function MagicFrameLogin() {
                                 </div>
 
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-2 block">연락처</label>
+                                    <label className="text-sm font-bold text-slate-500 mb-2 block">행번</label>
                                     <div className="relative">
-                                        <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input value={phone}
-                                            onChange={e => setPhone(formatPhone(e.target.value))}
-                                            placeholder="010-1234-5678"
+                                        <Hash size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            value={haengbun}
+                                            onChange={e => setHaengbun(e.target.value.replace(/[^0-9]/g, '').slice(0, 7))}
+                                            placeholder="행번 7자리 입력"
+                                            maxLength={7}
                                             type="tel"
-                                            className="w-full pl-11 pr-4 py-3.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 outline-none transition-all" />
+                                            inputMode="numeric"
+                                            className="w-full pl-11 pr-4 py-3.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 outline-none transition-all"
+                                        />
                                     </div>
                                 </div>
 
                                 {error && (
                                     <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                                        className="text-red-500 text-xs flex items-center gap-1">
+                                        className="text-red-500 text-sm flex items-center gap-1">
                                         <AlertCircle size={12} /> {error}
                                     </motion.p>
                                 )}
@@ -205,5 +218,13 @@ export default function MagicFrameLogin() {
                 </AnimatePresence>
             </div>
         </MagicFrameLayout>
+    );
+}
+
+export default function MagicFrameLogin() {
+    return (
+        <Suspense>
+            <MagicFrameLoginInner />
+        </Suspense>
     );
 }

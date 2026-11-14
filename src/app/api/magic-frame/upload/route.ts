@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
         // Get user info for filename
         const { data: user, error: userError } = await supabaseAdmin
             .from('magic_frame_users')
-            .select('name, phone, submitted')
+            .select('name, phone, submitted, submitted_at')
             .eq('id', userId)
             .single();
 
@@ -27,11 +27,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: '이미 제출된 사용자입니다.' }, { status: 400 });
         }
 
-        // Size check (max 5MB)
+        // Vercel 엣지 4.5MB body limit — 함수 도달 전 차단됨. 클라이언트는 4MB 이하로 압축 후 전송.
         const buffer = Buffer.from(await file.arrayBuffer());
 
-        if (buffer.byteLength > 5 * 1024 * 1024) {
-            return NextResponse.json({ error: '이미지 크기가 5MB를 초과합니다.' }, { status: 400 });
+        if (buffer.byteLength > 4.2 * 1024 * 1024) {
+            return NextResponse.json({ error: '이미지 크기가 너무 큽니다. 다시 시도해 주세요.' }, { status: 400 });
         }
 
         const filename = `${userId}.jpg`;
@@ -62,15 +62,20 @@ export async function POST(req: NextRequest) {
 
         const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
 
-        // Update user record
+        // Update user record — submitted_at 은 첫 제출 시에만 설정 (재제출 시 원래 시각 보존)
+        const now = new Date().toISOString();
+        const updatePayload: Record<string, any> = {
+            submitted: true,
+            image_url: publicUrl,
+            image_type: imageType,
+            updated_at: now,
+        };
+        if (!(user as any).submitted_at) {
+            updatePayload.submitted_at = now;
+        }
         const { error: updateError } = await supabaseAdmin
             .from('magic_frame_users')
-            .update({
-                submitted: true,
-                image_url: publicUrl,
-                image_type: imageType,
-                updated_at: new Date().toISOString(),
-            })
+            .update(updatePayload)
             .eq('id', userId);
 
         if (updateError) {

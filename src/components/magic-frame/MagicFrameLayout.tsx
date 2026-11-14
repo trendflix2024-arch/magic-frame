@@ -1,7 +1,9 @@
 "use client";
 
 import Link from 'next/link';
-import { Sparkles, Mail, MessageCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Sparkles, Mail, MessageCircle, LogOut } from 'lucide-react';
 import { KAKAO_CHANNEL_URL, SUPPORT_EMAIL } from '@/lib/magic-frame-config';
 
 export function MagicFrameLayout({
@@ -13,11 +15,35 @@ export function MagicFrameLayout({
     mainClassName?: string;
     hideFooter?: boolean;
 }) {
+    const router = useRouter();
+    const [hasSession, setHasSession] = useState(false);
+
+    useEffect(() => {
+        const check = () => {
+            try {
+                const raw = localStorage.getItem('magic_frame_session');
+                setHasSession(!!(raw && JSON.parse(raw)?.userId));
+            } catch {
+                setHasSession(false);
+            }
+        };
+        check();
+        window.addEventListener('storage', check);
+        return () => window.removeEventListener('storage', check);
+    }, []);
+
+    const handleLogout = () => {
+        localStorage.removeItem('magic_frame_session');
+        setHasSession(false);
+        router.push('/magic-frame');
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col">
             {/* Header */}
             <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
-                <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-center">
+                <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+                    <div className="w-20" />
                     <Link href="/magic-frame" className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
                             <Sparkles size={16} className="text-white" />
@@ -26,6 +52,18 @@ export function MagicFrameLayout({
                             매직액자
                         </span>
                     </Link>
+                    <div className="flex justify-end">
+                        {hasSession && (
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
+                                title="로그아웃"
+                            >
+                                <LogOut size={13} />
+                                로그아웃
+                            </button>
+                        )}
+                    </div>
                 </div>
             </header>
 

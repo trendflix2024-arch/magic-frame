@@ -70,7 +70,11 @@ export async function PATCH(req: NextRequest) {
             return NextResponse.json({ error: '업데이트할 데이터가 없습니다.' }, { status: 400 });
         }
 
-        // Auto-set shipped_at when transitioning to shipped
+        // shipping_status 가 'pending' 외 (new_order/preparing/shipped) 면 submitted=true 강제 —
+        // 그래야 unified 의 발송완료/제작중/준비중 탭 필터에 노출됨
+        if (updateData.shipping_status && updateData.shipping_status !== 'pending') {
+            updateData.submitted = true;
+        }
         if (updateData.shipping_status === 'shipped') {
             updateData.shipped_at = new Date().toISOString();
         }

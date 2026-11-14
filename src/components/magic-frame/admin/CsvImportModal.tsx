@@ -14,6 +14,7 @@ interface CsvImportModalProps {
 
 interface CsvEntry {
     name: string;
+    haengbun: string;
     phone: string;
     address: string;
     postal_code: string;
@@ -30,7 +31,8 @@ interface MatchResult extends CsvEntry {
 
 // Map common Korean CSV headers to our field names
 const HEADER_MAP: Record<string, string> = {
-    '이름': 'name', 'name': 'name', '성명': 'name', '수령인': 'name', '받는분': 'name',
+    '이름': 'name', 'name': 'name', '성명': 'name', '수령인': 'name', '받는분': 'name', '성함': 'name',
+    '행번': 'haengbun', 'haengbun': 'haengbun',
     '연락처': 'phone', 'phone': 'phone', '전화번호': 'phone', '휴대폰': 'phone', '핸드폰': 'phone', '전화': 'phone',
     '주소': 'address', 'address': 'address', '배송지': 'address', '배송주소': 'address',
     '우편번호': 'postal_code', 'postal_code': 'postal_code', '우편': 'postal_code', 'zip': 'postal_code',
@@ -41,7 +43,15 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
     const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
     const [entries, setEntries] = useState<CsvEntry[]>([]);
     const [results, setResults] = useState<MatchResult[]>([]);
-    const [summary, setSummary] = useState<{ total: number; matched: number; newUsers: number } | null>(null);
+    const [summary, setSummary] = useState<{
+        total: number;
+        matched: number;
+        newUsers: number;
+        skippedDuplicates?: number;
+        skippedExisting?: number;
+        skippedConflicts?: number;
+        conflicts?: string[];
+    } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [appliedCount, setAppliedCount] = useState(0);
@@ -62,13 +72,37 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
         onClose();
     };
 
-    const parseCsv = useCallback((file: File) => {
+    const parseCsv = useCallback(async (file: File) => {
         setError('');
         setLoading(true);
 
-        Papa.parse(file, {
+        // UTF-8 우선, 깨진 문자 감지 시 EUC-KR 폴백
+        let text = '';
+        try {
+            const buf = await file.arrayBuffer();
+            const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+            // replacement char(U+FFFD)가 있거나 한글이 전혀 없으면 EUC-KR로 재시도
+            const hasReplacement = /\uFFFD/.test(utf8);
+            const hasKorean = /[\uAC00-\uD7A3]/.test(utf8);
+            if (hasReplacement || !hasKorean) {
+                try {
+                    text = new TextDecoder('euc-kr').decode(buf);
+                } catch {
+                    text = utf8;
+                }
+            } else {
+                text = utf8;
+            }
+        } catch {
+            setError('파일을 읽을 수 없습니다.');
+            setLoading(false);
+            return;
+        }
+
+        Papa.parse(text, {
             header: true,
             skipEmptyLines: true,
+            transformHeader: (h) => h.replace(/^\uFEFF/, '').trim(),
             complete: (result) => {
                 if (!result.data?.length) {
                     setError('CSV 파일에 데이터가 없습니다.');
@@ -76,7 +110,6 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
                     return;
                 }
 
-                // Map headers
                 const rows = result.data as Record<string, string>[];
                 const parsed: CsvEntry[] = rows.map(row => {
                     const mapped: Record<string, string> = {};
@@ -86,15 +119,17 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
                     }
                     return {
                         name: mapped.name || '',
+                        haengbun: mapped.haengbun || '',
                         phone: mapped.phone || '',
                         address: mapped.address || '',
                         postal_code: mapped.postal_code || '',
                         address_detail: mapped.address_detail || '',
                     };
-                }).filter(e => e.name && e.phone);
+                }).filter(e => e.name && e.haengbun);
 
                 if (!parsed.length) {
-                    setError('유효한 데이터가 없습니다. "이름"과 "연락처" 컬럼이 필요합니다.');
+                    const foundHeaders = rows[0] ? Object.keys(rows[0]).join(', ') : '없음';
+                    setError(`유효한 데이터가 없습니다. "성함"과 "행번" 컬럼이 필요합니다. (인식된 컬럼: ${foundHeaders})`);
                     setLoading(false);
                     return;
                 }
@@ -135,6 +170,7 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
         const matches = results.map(r => ({
             userId: r.userId,
             name: r.name,
+            haengbun: r.haengbun,
             phone: r.phone,
             address: r.address,
             postal_code: r.postal_code,
@@ -187,13 +223,6 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
         if (file) parseCsv(file);
     };
 
-    const formatPhone = (phone: string) => {
-        const p = phone.replace(/[^0-9]/g, '');
-        if (p.length === 11) return `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}`;
-        if (p.length === 10) return `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`;
-        return phone;
-    };
-
     return (
         <AnimatePresence>
             {open && (
@@ -239,10 +268,10 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
                                         {loading ? '파일 처리 중...' : 'CSV 파일을 드래그하거나 클릭하세요'}
                                     </p>
                                     <p className="text-xs text-slate-400">
-                                        필수 컬럼: 이름, 연락처, 주소
+                                        필수 컬럼: 행번, 성함
                                     </p>
                                     <p className="text-[10px] text-slate-300 mt-2">
-                                        선택 컬럼: 우편번호, 상세주소
+                                        선택 컬럼: 연락처, 주소, 우편번호, 상세주소
                                     </p>
                                 </div>
                             )}
@@ -251,20 +280,45 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
                             {step === 'preview' && (
                                 <>
                                     {summary && (
-                                        <div className="flex gap-2">
-                                            <div className="flex-1 bg-slate-50 rounded-lg p-3 text-center">
-                                                <p className="text-lg font-bold text-slate-800">{summary.total}</p>
-                                                <p className="text-[10px] text-slate-400">전체</p>
+                                        <>
+                                            <div className="flex gap-2">
+                                                <div className="flex-1 bg-blue-50 rounded-lg p-3 text-center">
+                                                    <p className="text-lg font-bold text-blue-600">{summary.newUsers}</p>
+                                                    <p className="text-[10px] text-slate-400">신규 등록</p>
+                                                </div>
+                                                <div className="flex-1 bg-slate-50 rounded-lg p-3 text-center">
+                                                    <p className="text-lg font-bold text-slate-600">{summary.skippedExisting || 0}</p>
+                                                    <p className="text-[10px] text-slate-400">기존 (건너뜀)</p>
+                                                </div>
+                                                <div className="flex-1 bg-amber-50 rounded-lg p-3 text-center">
+                                                    <p className="text-lg font-bold text-amber-600">{summary.skippedConflicts || 0}</p>
+                                                    <p className="text-[10px] text-slate-400">이름 충돌</p>
+                                                </div>
                                             </div>
-                                            <div className="flex-1 bg-emerald-50 rounded-lg p-3 text-center">
-                                                <p className="text-lg font-bold text-emerald-600">{summary.matched}</p>
-                                                <p className="text-[10px] text-slate-400">기존 고객</p>
-                                            </div>
-                                            <div className="flex-1 bg-blue-50 rounded-lg p-3 text-center">
-                                                <p className="text-lg font-bold text-blue-600">{summary.newUsers}</p>
-                                                <p className="text-[10px] text-slate-400">신규 등록</p>
-                                            </div>
-                                        </div>
+                                            {((summary.skippedDuplicates || 0) > 0 || (summary.skippedConflicts || 0) > 0) && (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 space-y-1">
+                                                    <div className="font-bold flex items-center gap-1">
+                                                        <AlertCircle size={12} />
+                                                        주의 항목
+                                                    </div>
+                                                    {(summary.skippedDuplicates || 0) > 0 && (
+                                                        <p>· 파일 내 행번 중복: <b>{summary.skippedDuplicates}</b>건 (첫 번째 항목만 사용)</p>
+                                                    )}
+                                                    {(summary.skippedConflicts || 0) > 0 && (
+                                                        <p>· DB 행번 중복(이름 다름): <b>{summary.skippedConflicts}</b>건 — 확인 필요</p>
+                                                    )}
+                                                    {summary.conflicts && summary.conflicts.length > 0 && (
+                                                        <details className="mt-1" open>
+                                                            <summary className="cursor-pointer text-amber-600 hover:text-amber-700">충돌 목록</summary>
+                                                            <ul className="mt-1 max-h-32 overflow-y-auto pl-3 space-y-0.5 text-[10px]">
+                                                                {summary.conflicts.slice(0, 50).map((c, i) => <li key={i}>{c}</li>)}
+                                                                {summary.conflicts.length > 50 && <li>...외 {summary.conflicts.length - 50}건</li>}
+                                                            </ul>
+                                                        </details>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </>
                                     )}
 
                                     <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -272,8 +326,8 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
                                             <table className="w-full text-xs">
                                                 <thead className="bg-slate-50 sticky top-0">
                                                     <tr>
-                                                        <th className="text-left px-3 py-2 font-bold text-slate-500">이름</th>
-                                                        <th className="text-left px-3 py-2 font-bold text-slate-500">연락처</th>
+                                                        <th className="text-left px-3 py-2 font-bold text-slate-500">성함</th>
+                                                        <th className="text-left px-3 py-2 font-bold text-slate-500">행번</th>
                                                         <th className="text-left px-3 py-2 font-bold text-slate-500">주소</th>
                                                         <th className="text-center px-3 py-2 font-bold text-slate-500">매칭</th>
                                                     </tr>
@@ -282,7 +336,7 @@ export function CsvImportModal({ open, onClose, onImportComplete }: CsvImportMod
                                                     {results.map((r, i) => (
                                                         <tr key={i} className={`border-t border-slate-100 ${r.isNew ? 'bg-blue-50/50' : ''}`}>
                                                             <td className="px-3 py-2 font-medium text-slate-700">{r.name}</td>
-                                                            <td className="px-3 py-2 text-slate-500">{formatPhone(r.phone)}</td>
+                                                            <td className="px-3 py-2 text-slate-500">{r.haengbun}</td>
                                                             <td className="px-3 py-2 text-slate-500 max-w-[140px] truncate">{r.address}</td>
                                                             <td className="px-3 py-2 text-center">
                                                                 {r.matched ? (

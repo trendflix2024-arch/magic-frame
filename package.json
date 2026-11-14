@@ -11,14 +11,18 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
     "@tosspayments/tosspayments-sdk": "^2.5.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
     "clsx": "^2.0.0",
     "framer-motion": "^10.16.4",
+    "heic2any": "^0.0.4",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.284.0",
     "next": "^14.2.3",
     "next-auth": "^4.24.13",
     "papaparse": "^5.5.3",
     "react": "^18.3.1",
+    "react-daum-postcode": "^4.0.0",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^1.14.0"
   },

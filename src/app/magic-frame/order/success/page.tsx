@@ -18,11 +18,12 @@ function OrderSuccessContent() {
         const orderId = searchParams.get('orderId');
         const amount = searchParams.get('amount');
         const productId = searchParams.get('productId');
+        const qtyParam = Number(searchParams.get('qty') || '1') || 1;
 
         // sessionStorage → localStorage 폴백
         let userId = '';
         try {
-            const raw = sessionStorage.getItem('magic_frame_session');
+            const raw = localStorage.getItem('magic_frame_session');
             userId = JSON.parse(raw || '{}').userId || '';
         } catch {}
         if (!userId) {
@@ -44,6 +45,7 @@ function OrderSuccessContent() {
                 amount: Number(amount),
                 productId,
                 userId,
+                quantity: qtyParam,
             }),
         })
             .then(r => r.json())
@@ -54,6 +56,12 @@ function OrderSuccessContent() {
                 if (data.success) {
                     setProductName(data.productName || '');
                     setStatus('success');
+                    // 매직액자(충전식) 구매 → 바로 사진 등록 슬롯 페이지로 이동
+                    if (productId === 'magic-frame-charger' && data.dbOrderId) {
+                        setTimeout(() => {
+                            router.replace(`/magic-frame/charger/photos?orderId=${data.dbOrderId}`);
+                        }, 800);
+                    }
                 } else {
                     setStatus('error');
                     setErrorMsg(data.error || '결제 확인 실패');
@@ -63,7 +71,7 @@ function OrderSuccessContent() {
                 setStatus('error');
                 setErrorMsg('서버 오류가 발생했습니다.');
             });
-    }, [searchParams]);
+    }, [searchParams, router]);
 
     if (status === 'confirming') {
         return (

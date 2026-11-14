@@ -1,30 +1,23 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Plus, RotateCcw, Check, X, LayoutGrid, Circle, Save, ArrowLeftRight, Camera, Type, Trash2 } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Plus, X, Camera } from 'lucide-react';
 import type { TextLayer } from './PhotoCropper';
 import { PhotoCropModal } from './PhotoCropModal';
 import {
-    FONTS,
     DEFAULT_FONT,
-    TEXT_COLORS,
-    TEXT_PRESETS,
-    DATE_FORMAT_KEYS,
-    formatPickedDate,
     todayIso,
 } from './textPresets';
+import type { ControlsProps } from './collage/types';
+import { TabbedControls } from './collage/TabbedControls';
+import { saveDraftValue, loadDraftValue, clearDraftValue } from '@/lib/magic-frame-draft-storage';
+import { ensureJpeg, isHeic } from '@/lib/heic-convert';
+
+const DRAFT_IMAGES_KEY = 'collage_images';
 
 interface CollageProps {
     onFinalize: (blob: Blob) => void;
 }
-
-const BG_COLORS = [
-    { label: '화이트', value: '#FFFFFF', border: true },
-    { label: '블랙', value: '#000000' },
-    { label: '그레이', value: '#E2E8F0' },
-    { label: '핑크', value: '#FBD5D5' },
-    { label: '라벤더', value: '#DDD6FE' },
-];
 
 interface CellDef {
     x: number; y: number; w: number; h: number;
@@ -145,6 +138,97 @@ const LAYOUTS: Layout[] = [
             { x: 0.75, y: 0, w: 0.25, h: 1 },
         ],
     },
+    // ── 5슬롯 ──
+    {
+        key: '5-1t4b', slots: 5, cells: [
+            { x: 0, y: 0, w: 1, h: 0.5 },
+            { x: 0, y: 0.5, w: 0.25, h: 0.5 },
+            { x: 0.25, y: 0.5, w: 0.25, h: 0.5 },
+            { x: 0.5, y: 0.5, w: 0.25, h: 0.5 },
+            { x: 0.75, y: 0.5, w: 0.25, h: 0.5 },
+        ],
+    },
+    {
+        key: '5-1l4r', slots: 5, cells: [
+            { x: 0, y: 0, w: 0.5, h: 1 },
+            { x: 0.5, y: 0, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0.25, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0.5, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0.75, w: 0.5, h: 0.25 },
+        ],
+    },
+    // ── 6슬롯 ──
+    {
+        key: '6-3x2', slots: 6, cells: [
+            { x: 0, y: 0, w: 1 / 3, h: 0.5 },
+            { x: 1 / 3, y: 0, w: 1 / 3, h: 0.5 },
+            { x: 2 / 3, y: 0, w: 1 / 3, h: 0.5 },
+            { x: 0, y: 0.5, w: 1 / 3, h: 0.5 },
+            { x: 1 / 3, y: 0.5, w: 1 / 3, h: 0.5 },
+            { x: 2 / 3, y: 0.5, w: 1 / 3, h: 0.5 },
+        ],
+    },
+    {
+        key: '6-2x3', slots: 6, cells: [
+            { x: 0, y: 0, w: 0.5, h: 1 / 3 },
+            { x: 0.5, y: 0, w: 0.5, h: 1 / 3 },
+            { x: 0, y: 1 / 3, w: 0.5, h: 1 / 3 },
+            { x: 0.5, y: 1 / 3, w: 0.5, h: 1 / 3 },
+            { x: 0, y: 2 / 3, w: 0.5, h: 1 / 3 },
+            { x: 0.5, y: 2 / 3, w: 0.5, h: 1 / 3 },
+        ],
+    },
+    // ── 7슬롯 ──
+    {
+        key: '7-1t6b', slots: 7, cells: [
+            { x: 0, y: 0, w: 1, h: 0.4 },
+            { x: 0, y: 0.4, w: 1 / 3, h: 0.3 },
+            { x: 1 / 3, y: 0.4, w: 1 / 3, h: 0.3 },
+            { x: 2 / 3, y: 0.4, w: 1 / 3, h: 0.3 },
+            { x: 0, y: 0.7, w: 1 / 3, h: 0.3 },
+            { x: 1 / 3, y: 0.7, w: 1 / 3, h: 0.3 },
+            { x: 2 / 3, y: 0.7, w: 1 / 3, h: 0.3 },
+        ],
+    },
+    // ── 8슬롯 ──
+    {
+        key: '8-4x2', slots: 8, cells: [
+            { x: 0, y: 0, w: 0.25, h: 0.5 },
+            { x: 0.25, y: 0, w: 0.25, h: 0.5 },
+            { x: 0.5, y: 0, w: 0.25, h: 0.5 },
+            { x: 0.75, y: 0, w: 0.25, h: 0.5 },
+            { x: 0, y: 0.5, w: 0.25, h: 0.5 },
+            { x: 0.25, y: 0.5, w: 0.25, h: 0.5 },
+            { x: 0.5, y: 0.5, w: 0.25, h: 0.5 },
+            { x: 0.75, y: 0.5, w: 0.25, h: 0.5 },
+        ],
+    },
+    {
+        key: '8-2x4', slots: 8, cells: [
+            { x: 0, y: 0, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0, w: 0.5, h: 0.25 },
+            { x: 0, y: 0.25, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0.25, w: 0.5, h: 0.25 },
+            { x: 0, y: 0.5, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0.5, w: 0.5, h: 0.25 },
+            { x: 0, y: 0.75, w: 0.5, h: 0.25 },
+            { x: 0.5, y: 0.75, w: 0.5, h: 0.25 },
+        ],
+    },
+    // ── 9슬롯 ──
+    {
+        key: '9-grid', slots: 9, cells: [
+            { x: 0, y: 0, w: 1 / 3, h: 1 / 3 },
+            { x: 1 / 3, y: 0, w: 1 / 3, h: 1 / 3 },
+            { x: 2 / 3, y: 0, w: 1 / 3, h: 1 / 3 },
+            { x: 0, y: 1 / 3, w: 1 / 3, h: 1 / 3 },
+            { x: 1 / 3, y: 1 / 3, w: 1 / 3, h: 1 / 3 },
+            { x: 2 / 3, y: 1 / 3, w: 1 / 3, h: 1 / 3 },
+            { x: 0, y: 2 / 3, w: 1 / 3, h: 1 / 3 },
+            { x: 1 / 3, y: 2 / 3, w: 1 / 3, h: 1 / 3 },
+            { x: 2 / 3, y: 2 / 3, w: 1 / 3, h: 1 / 3 },
+        ],
+    },
 ];
 
 function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -169,14 +253,14 @@ function getTouchDist(touches: Map<number, { x: number; y: number }>) {
 
 export function CollageMaker({ onFinalize }: CollageProps) {
     const [layout, setLayout] = useState<string>('4-grid');
-    const [images, setImages] = useState<(string | null)[]>(Array(4).fill(null));
+    const [images, setImages] = useState<(string | null)[]>(Array(9).fill(null));
     const [ratio, setRatio] = useState<'3:4' | '4:3'>('3:4');
     const [spacing, setSpacing] = useState(0);
     const [bgColor, setBgColor] = useState('#FFFFFF');
     const [cornerRadius, setCornerRadius] = useState(0);
     const [filterSlots, setFilterSlots] = useState<number | null>(null);
     const [transforms, setTransforms] = useState<SlotTransform[]>(
-        Array(4).fill(null).map(() => ({ ...DEFAULT_T }))
+        Array(9).fill(null).map(() => ({ ...DEFAULT_T }))
     );
     const [swapMode, setSwapMode] = useState(false);
     const [swapFrom, setSwapFrom] = useState<number | null>(null);
@@ -188,6 +272,29 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const selectedText = texts.find(t => t.id === selectedTextId) ?? null;
     const textDragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
     const previewContainerRef = useRef<HTMLDivElement>(null);
+
+    // 제스처 중 페이지 스크롤 락 — slot 드래그/핀치 + text 드래그 시 활성
+    const gestureCountRef = useRef(0);
+    const acquireScrollLock = useCallback(() => {
+        gestureCountRef.current += 1;
+        if (gestureCountRef.current === 1 && typeof document !== 'undefined') {
+            document.body.style.overflow = 'hidden';
+            document.body.style.touchAction = 'none';
+        }
+    }, []);
+    const releaseScrollLock = useCallback(() => {
+        gestureCountRef.current = Math.max(0, gestureCountRef.current - 1);
+        if (gestureCountRef.current === 0 && typeof document !== 'undefined') {
+            document.body.style.overflow = '';
+            document.body.style.touchAction = '';
+        }
+    }, []);
+    useEffect(() => () => {
+        if (typeof document !== 'undefined') {
+            document.body.style.overflow = '';
+            document.body.style.touchAction = '';
+        }
+    }, []);
 
     const addText = () => {
         const id = (crypto as any).randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random()}`;
@@ -219,6 +326,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         const t = texts.find(x => x.id === id);
         if (!t) return;
         textDragRef.current = { id, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y };
+        acquireScrollLock();
     };
     const handleTextPointerMove = (e: React.PointerEvent) => {
         e.stopPropagation();
@@ -234,7 +342,10 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     };
     const handleTextPointerUp = (e: React.PointerEvent) => {
         e.stopPropagation();
-        textDragRef.current = null;
+        if (textDragRef.current) {
+            textDragRef.current = null;
+            releaseScrollLock();
+        }
     };
 
     const fileRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -252,37 +363,54 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const hasAnyImage = slotImages.some(Boolean);
 
     const isPortrait = ratio === '3:4';
-    const previewW = isPortrait ? 300 : 400;
-    const previewH = isPortrait ? 400 : 300;
-
-    // 임시 저장 불러오기
+    // 뷰포트 기반 동적 미리보기 — Samsung 표시 크기 최대 / 좁은 화면 가로 스크롤 방지
+    const [vpW, setVpW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
     useEffect(() => {
-        try {
-            const saved = localStorage.getItem('magic_frame_collage_draft');
-            if (!saved) return;
-            const draft = JSON.parse(saved);
-            // draft.layout 기준으로 필요한 슬롯 수 결정 (없으면 현재 기본값)
-            const savedLayoutKey = typeof draft.layout === 'string' ? draft.layout : null;
-            const savedLayout = savedLayoutKey ? LAYOUTS.find(l => l.key === savedLayoutKey) : null;
-            const targetSlots = savedLayout?.slots ?? 4;
-            if (savedLayoutKey) setLayout(savedLayoutKey);
-            if (Array.isArray(draft.images)) {
-                const padded = Array(targetSlots).fill(null).map((_, i) => draft.images[i] ?? null);
-                setImages(padded);
-            }
-            if (draft.ratio) setRatio(draft.ratio);
-            if (draft.spacing !== undefined) setSpacing(draft.spacing);
-            if (draft.bgColor) setBgColor(draft.bgColor);
-            if (draft.cornerRadius !== undefined) setCornerRadius(draft.cornerRadius);
-            if (Array.isArray(draft.transforms)) {
-                const padded = Array(targetSlots).fill(null).map((_, i) => {
-                    const t = draft.transforms[i];
-                    return t && typeof t === 'object' ? { ...DEFAULT_T, ...t } : { ...DEFAULT_T };
-                });
-                setTransforms(padded);
-            }
-            if (Array.isArray(draft.texts)) setTexts(draft.texts);
-        } catch { /* ignore */ }
+        const onResize = () => setVpW(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+    const portraitMax = 300, landscapeMax = 400;
+    const available = vpW - 80; // 페이지 패딩(32) + 카드 패딩(32) + 여유(16)
+    const previewW = Math.max(220, Math.min(isPortrait ? portraitMax : landscapeMax, available));
+    const previewH = isPortrait ? Math.round(previewW * 4 / 3) : Math.round(previewW * 3 / 4);
+
+    // 임시 저장 불러오기 — 설정은 localStorage, 이미지 배열은 IndexedDB
+    useEffect(() => {
+        (async () => {
+            try {
+                const saved = localStorage.getItem('magic_frame_collage_draft');
+                let savedLayoutKey: string | null = null;
+                let targetSlots = 4;
+                if (saved) {
+                    const draft = JSON.parse(saved);
+                    savedLayoutKey = typeof draft.layout === 'string' ? draft.layout : null;
+                    const savedLayout = savedLayoutKey ? LAYOUTS.find(l => l.key === savedLayoutKey) : null;
+                    targetSlots = savedLayout?.slots ?? 4;
+                    if (savedLayoutKey) setLayout(savedLayoutKey);
+                    if (draft.ratio) setRatio(draft.ratio);
+                    if (draft.spacing !== undefined) setSpacing(draft.spacing);
+                    if (draft.bgColor) setBgColor(draft.bgColor);
+                    if (draft.cornerRadius !== undefined) setCornerRadius(draft.cornerRadius);
+                    if (Array.isArray(draft.transforms)) {
+                        const padded = Array(targetSlots).fill(null).map((_, i) => {
+                            const t = draft.transforms[i];
+                            return t && typeof t === 'object' ? { ...DEFAULT_T, ...t } : { ...DEFAULT_T };
+                        });
+                        setTransforms(padded);
+                    }
+                    if (Array.isArray(draft.texts)) setTexts(draft.texts);
+                }
+                const imgRaw = await loadDraftValue(DRAFT_IMAGES_KEY);
+                if (imgRaw) {
+                    const arr: (string | null)[] = JSON.parse(imgRaw);
+                    if (Array.isArray(arr)) {
+                        const padded = Array(targetSlots).fill(null).map((_, i) => arr[i] ?? null);
+                        setImages(padded);
+                    }
+                }
+            } catch { /* ignore */ }
+        })();
     }, []);
 
     // 슬롯별 wheel 이벤트 (passive:false)
@@ -331,6 +459,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         e.stopPropagation();
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         const touches = touchesRef.current.get(i) ?? new Map();
+        const wasEmpty = touches.size === 0;
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
         touchesRef.current.set(i, touches);
         if (touches.size === 1) {
@@ -339,7 +468,8 @@ export function CollageMaker({ onFinalize }: CollageProps) {
             dragRef.current.delete(i);
             pinchRef.current.set(i, { startDist: getTouchDist(touches), startZoom: transforms[i].zoom });
         }
-    }, [images, swapMode, transforms]);
+        if (wasEmpty) acquireScrollLock();
+    }, [images, swapMode, transforms, acquireScrollLock]);
 
     const handlePointerMove = useCallback((e: React.PointerEvent, i: number) => {
         const touches = touchesRef.current.get(i);
@@ -374,14 +504,15 @@ export function CollageMaker({ onFinalize }: CollageProps) {
 
     const handlePointerUp = useCallback((e: React.PointerEvent, i: number) => {
         const touches = touchesRef.current.get(i);
-        if (touches) {
+        if (touches && touches.has(e.pointerId)) {
             touches.delete(e.pointerId);
             if (touches.size === 0) {
                 dragRef.current.delete(i);
                 pinchRef.current.delete(i);
+                releaseScrollLock();
             }
         }
-    }, []);
+    }, [releaseScrollLock]);
 
     const handleSwapClick = useCallback((i: number) => {
         if (!images[i]) return;
@@ -418,21 +549,31 @@ export function CollageMaker({ onFinalize }: CollageProps) {
 
     const handleAddImage = (index: number) => fileRefs.current[index]?.click();
 
-    const handleFileChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const [converting, setConverting] = useState(false);
+    const handleFileChange = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            const src = reader.result as string;
-            const cell = currentLayout.cells[index];
-            if (!cell) return;
-            const cellW = cell.w * previewW;
-            const cellH = cell.h * previewH;
-            const aspect = cellW / cellH;
-            setPendingCrop({ src, index, aspect });
-        };
-        reader.readAsDataURL(file);
         e.target.value = '';
+        if (!file) return;
+        try {
+            if (isHeic(file)) setConverting(true);
+            const blob = await ensureJpeg(file);
+            const reader = new FileReader();
+            reader.onload = () => {
+                const src = reader.result as string;
+                const cell = currentLayout.cells[index];
+                if (!cell) return;
+                const cellW = cell.w * previewW;
+                const cellH = cell.h * previewH;
+                const aspect = cellW / cellH;
+                setPendingCrop({ src, index, aspect });
+            };
+            reader.readAsDataURL(blob);
+        } catch (err) {
+            console.error('HEIC 변환 실패:', err);
+            alert('이 사진을 불러올 수 없습니다. (지원 안 되는 형식)');
+        } finally {
+            setConverting(false);
+        }
     };
 
     const handleCropApply = (croppedDataUrl: string) => {
@@ -461,13 +602,25 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         setTexts([]);
         setSelectedTextId(null);
         localStorage.removeItem('magic_frame_collage_draft');
+        clearDraftValue(DRAFT_IMAGES_KEY).catch(() => { });
     };
 
-    const handleTempSave = () => {
-        const draft = { layout, images, ratio, spacing, bgColor, cornerRadius, transforms, texts };
-        localStorage.setItem('magic_frame_collage_draft', JSON.stringify(draft));
-        setSavedToast(true);
-        setTimeout(() => setSavedToast(false), 2000);
+    const handleTempSave = async () => {
+        try {
+            const settings = { layout, ratio, spacing, bgColor, cornerRadius, transforms, texts };
+            localStorage.setItem('magic_frame_collage_draft', JSON.stringify(settings));
+            const hasAny = images.some(Boolean);
+            if (hasAny) {
+                await saveDraftValue(DRAFT_IMAGES_KEY, JSON.stringify(images));
+            } else {
+                await clearDraftValue(DRAFT_IMAGES_KEY);
+            }
+            setSavedToast(true);
+            setTimeout(() => setSavedToast(false), 2000);
+        } catch (e) {
+            console.error('Temp save failed:', e);
+            alert('임시저장에 실패했습니다. 저장 공간이 부족할 수 있습니다.');
+        }
     };
 
     const renderCollage = useCallback(async (): Promise<Blob | null> => {
@@ -566,23 +719,67 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         }
         ctx.shadowColor = 'transparent';
 
-        return new Promise(resolve => {
-            canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.92);
+        // Vercel 엣지 4.5MB body limit 회피 — 4MB 이하가 될 때까지 quality 단계적 감소
+        const MAX_BYTES = 4 * 1024 * 1024;
+        const QUALITIES = [0.92, 0.85, 0.78, 0.7, 0.6, 0.5];
+        const toBlob = (q: number) => new Promise<Blob | null>(resolve => {
+            canvas.toBlob(b => resolve(b), 'image/jpeg', q);
         });
+        let last: Blob | null = null;
+        for (const q of QUALITIES) {
+            const b = await toBlob(q);
+            if (!b) continue;
+            last = b;
+            if (b.size <= MAX_BYTES) break;
+        }
+        return last;
     }, [images, transforms, bgColor, spacing, isPortrait, currentLayout, cornerRadius, previewW, previewH, texts]);
 
     const handleFinalize = async () => {
         const blob = await renderCollage();
         if (blob) {
             localStorage.removeItem('magic_frame_collage_draft');
+            clearDraftValue(DRAFT_IMAGES_KEY).catch(() => { });
             onFinalize(blob);
         }
     };
 
+    const toggleSwap = useCallback(() => {
+        setSwapMode(p => !p);
+        setSwapFrom(null);
+    }, []);
+
+    const swappableCount = slotImages.filter(Boolean).length;
+
+    const controlsProps: ControlsProps = useMemo(() => ({
+        layout, filterSlots, filteredLayouts, isPortrait,
+        handleLayoutChange, handleFilterChange,
+        ratio, setRatio,
+        spacing, setSpacing, cornerRadius, setCornerRadius, bgColor, setBgColor,
+        texts, selectedTextId, selectedText, setSelectedTextId,
+        addText, updateText, deleteText, pickedDate, setPickedDate,
+        hasAnyImage, swapMode, toggleSwap, swappableCount,
+        handleFinalize, handleTempSave, savedToast, reset,
+    }), [
+        layout, filterSlots, filteredLayouts, isPortrait,
+        ratio, spacing, cornerRadius, bgColor,
+        texts, selectedTextId, selectedText, pickedDate,
+        hasAnyImage, swapMode, swappableCount, savedToast,
+        handleLayoutChange, handleFilterChange, addText, updateText, deleteText,
+        toggleSwap, handleFinalize, handleTempSave, reset, setSelectedTextId,
+    ]);
+
     return (
-        <div className="flex flex-col lg:flex-row gap-6">
-            {/* Preview */}
-            <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col gap-4">
+            {converting && (
+                <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                    <div className="bg-white rounded-2xl px-6 py-5 shadow-2xl text-sm font-bold text-slate-700">
+                        아이폰 사진을 불러오는 중...
+                    </div>
+                </div>
+            )}
+            {/* Preview — 모바일 sticky, 데스크톱 일반 흐름 */}
+            <div className="flex-1 flex items-center justify-center sticky top-0 z-30 bg-slate-50 -mx-4 px-4 py-2 lg:static lg:mx-0 lg:px-0 lg:py-0 lg:bg-transparent">
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 inline-block">
                     {swapMode && (
                         <div className="text-center mb-2 text-sm font-bold text-amber-600 bg-amber-50 rounded-lg py-1.5 px-3">
@@ -697,7 +894,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                                     <input
                                         ref={el => { fileRefs.current[i] = el; }}
                                         type="file"
-                                        accept="image/*"
+                                        accept="image/*,.heic,.heif"
                                         className="hidden"
                                         onChange={e => handleFileChange(i, e)}
                                     />
@@ -740,297 +937,8 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                 </div>
             </div>
 
-            {/* Controls */}
-            <div className="lg:w-72 space-y-5 bg-white rounded-2xl p-5 border border-slate-100 shadow-sm h-fit">
-                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                    <span className="text-base">&#9881;</span> 콜라주 설정
-                </h3>
+            <TabbedControls {...controlsProps} />
 
-                {/* Layout */}
-                <div>
-                    <label className="text-sm font-medium text-slate-500 mb-2 block flex items-center gap-1">
-                        <LayoutGrid size={12} /> 레이아웃
-                    </label>
-                    <div className="flex gap-1 mb-3 bg-slate-100 rounded-lg p-1">
-                        {([null, 1, 2, 3, 4] as (number | null)[]).map(s => (
-                            <button
-                                key={s ?? 'all'}
-                                onClick={() => handleFilterChange(s)}
-                                className={`flex-1 py-1 rounded-md text-xs font-bold transition-all ${
-                                    filterSlots === s ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                            >
-                                {s === null ? '전체' : `${s}장`}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="overflow-x-auto -mx-1 px-1 pb-2 scrollbar-hide">
-                        <div className="flex gap-2" style={{ width: 'max-content' }}>
-                            {filteredLayouts.map(l => {
-                                const isSelected = layout === l.key;
-                                const w = isPortrait ? 48 : 60;
-                                const h = isPortrait ? 60 : 48;
-                                return (
-                                    <button
-                                        key={l.key}
-                                        onClick={() => handleLayoutChange(l.key)}
-                                        className={`relative flex-shrink-0 rounded-lg overflow-hidden transition-all ${
-                                            isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : 'ring-1 ring-slate-200 hover:ring-indigo-300'
-                                        }`}
-                                        style={{ width: w, height: h }}
-                                    >
-                                        <div className="absolute inset-0 bg-slate-100">
-                                            {l.cells.map((c, i) => (
-                                                <div
-                                                    key={i}
-                                                    className="absolute rounded-[2px]"
-                                                    style={{
-                                                        left: `${c.x * 100 + 5}%`,
-                                                        top: `${c.y * 100 + 5}%`,
-                                                        width: `${c.w * 100 - 10}%`,
-                                                        height: `${c.h * 100 - 10}%`,
-                                                        backgroundColor: isSelected ? '#818cf8' : '#94a3b8',
-                                                    }}
-                                                />
-                                            ))}
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Ratio */}
-                <div>
-                    <label className="text-sm font-medium text-slate-500 mb-2 block">콜라주 비율</label>
-                    <div className="flex gap-2">
-                        {(['3:4', '4:3'] as const).map(r => (
-                            <button
-                                key={r}
-                                onClick={() => setRatio(r)}
-                                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all border ${
-                                    ratio === r
-                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                                        : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200'
-                                }`}
-                            >
-                                {r === '3:4' ? '3 : 4 (세로)' : '4 : 3 (가로)'}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Spacing */}
-                <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm font-medium text-slate-500">여백</label>
-                        <span className="text-sm text-slate-400">{spacing}px</span>
-                    </div>
-                    <input type="range" min={0} max={20} value={spacing}
-                        onChange={e => setSpacing(Number(e.target.value))}
-                        className="w-full accent-indigo-600" />
-                </div>
-
-                {/* Corner Radius */}
-                <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm font-medium text-slate-500 flex items-center gap-1">
-                            <Circle size={10} /> 모서리 둥글기
-                        </label>
-                        <span className="text-sm text-slate-400">{cornerRadius}px</span>
-                    </div>
-                    <input type="range" min={0} max={40} value={cornerRadius}
-                        onChange={e => setCornerRadius(Number(e.target.value))}
-                        className="w-full accent-indigo-600" />
-                </div>
-
-                {/* BG Color */}
-                <div>
-                    <label className="text-sm font-medium text-slate-500 mb-2 block">배경색</label>
-                    <div className="flex gap-2">
-                        {BG_COLORS.map(c => (
-                            <button
-                                key={c.value}
-                                onClick={() => setBgColor(c.value)}
-                                className={`w-9 h-9 rounded-full transition-all ${
-                                    bgColor === c.value ? 'ring-2 ring-indigo-500 ring-offset-2' : ''
-                                } ${c.border ? 'border border-slate-200' : ''}`}
-                                style={{ backgroundColor: c.value }}
-                                title={c.label}
-                            />
-                        ))}
-                    </div>
-                </div>
-
-                {/* Text layers */}
-                <div className="border-t border-slate-100 pt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
-                            <Type size={13} /> 텍스트 <span className="text-[10px] font-medium text-slate-400">(선택)</span>
-                        </h4>
-                        <button onClick={addText}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors">
-                            <Plus size={12} /> 추가
-                        </button>
-                    </div>
-
-                    {texts.length === 0 && (
-                        <p className="text-xs text-slate-400 text-center py-2 leading-relaxed">
-                            &quot;추가&quot; 버튼으로 문구를 만들고<br />
-                            프리뷰에서 드래그해 옮기세요
-                        </p>
-                    )}
-
-                    {texts.length > 1 && (
-                        <div className="flex gap-1 flex-wrap">
-                            {texts.map((t, i) => (
-                                <button key={t.id} onClick={() => setSelectedTextId(t.id)}
-                                    className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${selectedTextId === t.id ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
-                                    T{i + 1}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-
-                    {selectedText && (
-                        <>
-                            <div>
-                                <label className="text-sm text-slate-400 mb-1 block">추천 문구</label>
-                                <select
-                                    value=""
-                                    onChange={e => {
-                                        if (!e.target.value) return;
-                                        updateText(selectedText.id, { content: e.target.value });
-                                        e.target.value = "";
-                                    }}
-                                    className="w-full px-2 py-2 rounded-lg border border-slate-200 text-sm bg-white"
-                                >
-                                    <option value="">✨ 선물 문구 선택하기...</option>
-                                    {TEXT_PRESETS.map(group => (
-                                        <optgroup key={group.category} label={group.category}>
-                                            {group.items.map(p => (
-                                                <option key={p.label} value={p.content}>{p.label}</option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-sm text-slate-400 mb-1 block">추천 날짜</label>
-                                <div className="flex gap-2 mb-1.5">
-                                    <input
-                                        type="date"
-                                        value={pickedDate}
-                                        onChange={e => setPickedDate(e.target.value || todayIso())}
-                                        className="flex-1 px-2 py-2 rounded-lg border border-slate-200 text-sm"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setPickedDate(todayIso())}
-                                        className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50"
-                                    >
-                                        오늘
-                                    </button>
-                                </div>
-                                <select
-                                    value=""
-                                    onChange={e => {
-                                        if (!e.target.value) return;
-                                        updateText(selectedText.id, { content: e.target.value });
-                                        e.target.value = "";
-                                    }}
-                                    className="w-full px-2 py-2 rounded-lg border border-slate-200 text-sm bg-white"
-                                >
-                                    <option value="">📅 날짜 형식 선택...</option>
-                                    {DATE_FORMAT_KEYS.map(key => {
-                                        const formatted = formatPickedDate(pickedDate, key);
-                                        return <option key={key} value={formatted}>{formatted}</option>;
-                                    })}
-                                </select>
-                            </div>
-                            <input
-                                value={selectedText.content}
-                                onChange={e => updateText(selectedText.id, { content: e.target.value })}
-                                placeholder="문구를 입력하세요"
-                                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
-                            />
-                            <div>
-                                <label className="text-sm text-slate-400 mb-1 block">서체</label>
-                                <select
-                                    value={selectedText.font}
-                                    onChange={e => updateText(selectedText.id, { font: e.target.value })}
-                                    className="w-full px-2 py-2 rounded-lg border border-slate-200 text-sm"
-                                    style={{ fontFamily: selectedText.font }}>
-                                    {FONTS.map(f => (
-                                        <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-sm text-slate-400 mb-1 block">색상</label>
-                                <div className="flex gap-1.5">
-                                    {TEXT_COLORS.map(c => (
-                                        <button key={c.value}
-                                            onClick={() => updateText(selectedText.id, { color: c.value })}
-                                            className={`w-7 h-7 rounded-full border ${selectedText.color === c.value ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border-slate-200'}`}
-                                            style={{ backgroundColor: c.value }} title={c.label} />
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="text-sm text-slate-400">크기</label>
-                                    <span className="text-sm text-slate-400">{selectedText.size}px</span>
-                                </div>
-                                <input type="range" min={12} max={48} value={selectedText.size}
-                                    onChange={e => updateText(selectedText.id, { size: Number(e.target.value) })}
-                                    className="w-full accent-indigo-600" />
-                            </div>
-                            <button onClick={() => deleteText(selectedText.id)}
-                                className="w-full py-2.5 bg-red-50 text-red-500 text-sm font-bold rounded-xl hover:bg-red-100 transition-colors flex items-center justify-center gap-1.5">
-                                <Trash2 size={13} /> 이 문구 삭제
-                            </button>
-                        </>
-                    )}
-                </div>
-
-                {/* Buttons */}
-                <div className="space-y-2 pt-2">
-                    <button
-                        onClick={handleFinalize}
-                        disabled={!hasAnyImage}
-                        className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:shadow-xl transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-                    >
-                        <Check size={16} /> 사진 확정하기
-                    </button>
-                    <button
-                        onClick={() => { setSwapMode(p => !p); setSwapFrom(null); }}
-                        disabled={slotImages.filter(Boolean).length < 2}
-                        className={`w-full py-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-40 ${
-                            swapMode
-                                ? 'bg-amber-500 text-white border-amber-500'
-                                : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
-                        }`}
-                    >
-                        <ArrowLeftRight size={14} />
-                        {swapMode ? '순서 변경 중... (취소)' : '사진 순서 변경'}
-                    </button>
-                    <button
-                        onClick={handleTempSave}
-                        disabled={!hasAnyImage}
-                        className="w-full py-3 bg-white text-indigo-600 border border-indigo-200 font-medium rounded-xl hover:bg-indigo-50 transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-sm"
-                    >
-                        <Save size={14} /> {savedToast ? '저장 완료!' : '임시 저장하기'}
-                    </button>
-                    <button
-                        onClick={reset}
-                        className="w-full py-3 text-slate-400 font-medium rounded-xl hover:text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-sm"
-                    >
-                        <RotateCcw size={14} /> 초기화
-                    </button>
-                </div>
-            </div>
             {pendingCrop && (
                 <PhotoCropModal
                     imageSrc={pendingCrop.src}

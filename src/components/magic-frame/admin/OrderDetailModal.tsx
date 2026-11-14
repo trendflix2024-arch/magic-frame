@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import {
     X, Check, Loader2, AlertCircle, Truck, RotateCcw,
-    Trash2, ShoppingBag, ImageIcon, ExternalLink,
+    Trash2, ShoppingBag, ImageIcon, ExternalLink, Search,
 } from 'lucide-react';
+
+const DaumPostcode = dynamic(() => import('react-daum-postcode'), { ssr: false });
 import { SHIPPING_CARRIERS, TRACKING_URLS } from '@/lib/magic-frame-config';
 import { type UnifiedOrder, type AddonOrder, PIPELINE_CONFIG, type PipelineStatus, STATUS_TO_SHIPPING, formatPhone, formatDate } from './OrderCard';
 
@@ -28,6 +31,8 @@ export function OrderDetailModal({
     order, onClose, onSave, onAddonStatusChange, onResetSubmission, onDelete,
 }: OrderDetailModalProps) {
     const [form, setForm] = useState({
+        name: '',
+        phone: '',
         shipping_status: 'pending',
         address: '',
         postal_code: '',
@@ -41,12 +46,14 @@ export function OrderDetailModal({
     const [addonLoading, setAddonLoading] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [confirmAction, setConfirmAction] = useState<'reset' | 'delete' | null>(null);
-    const [lastOrderId, setLastOrderId] = useState<string | null>(null);
+    const [postcodeOpen, setPostcodeOpen] = useState(false);
 
     // Sync form when order changes
-    if (order && order.id !== lastOrderId) {
-        setLastOrderId(order.id);
+    useEffect(() => {
+        if (!order) return;
         setForm({
+            name: order.name || '',
+            phone: order.phone || '',
             shipping_status: order.shipping_status || 'pending',
             address: order.address || '',
             postal_code: order.postal_code || '',
@@ -57,9 +64,7 @@ export function OrderDetailModal({
         });
         setError('');
         setConfirmAction(null);
-    } else if (!order && lastOrderId) {
-        setLastOrderId(null);
-    }
+    }, [order]);
 
     const handleSave = async () => {
         if (!order) return;
@@ -126,8 +131,11 @@ export function OrderDetailModal({
                                     </div>
                                 )}
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                                 <h3 className="text-base font-bold text-slate-800">{order.name}</h3>
+                                {order.haengbun && (
+                                    <p className="text-xs text-indigo-600 font-bold">행번 {order.haengbun}</p>
+                                )}
                                 <p className="text-xs text-slate-400">{formatPhone(order.phone)}</p>
                                 <p className="text-[10px] text-slate-300">{formatDate(order.updated_at || order.created_at)}</p>
                             </div>
@@ -166,30 +174,54 @@ export function OrderDetailModal({
                                 </div>
                             )}
 
-                            {/* Address */}
-                            <div className="grid grid-cols-3 gap-2">
+                            {/* Name / Phone / Address */}
+                            <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">우편번호</label>
-                                    <input value={form.postal_code}
-                                        onChange={e => setForm(prev => ({ ...prev, postal_code: e.target.value }))}
-                                        placeholder="12345"
-                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">성함</label>
+                                    <input
+                                        value={form.name}
+                                        onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
+                                        placeholder="홍길동"
+                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+                                    />
                                 </div>
-                                <div className="col-span-2">
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">주소</label>
-                                    <input value={form.address}
-                                        onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))}
-                                        placeholder="서울시 강남구 테헤란로 123"
-                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">연락처</label>
+                                    <input
+                                        value={form.phone}
+                                        onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))}
+                                        placeholder="01012345678"
+                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+                                    />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1 block">상세주소</label>
-                                <input value={form.address_detail}
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">주소</label>
+                                <div className="flex gap-1.5">
+                                    <input
+                                        value={form.postal_code}
+                                        readOnly
+                                        placeholder="우편번호"
+                                        className="w-24 px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 text-slate-600"
+                                    />
+                                    <button type="button" onClick={() => setPostcodeOpen(true)}
+                                        className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap">
+                                        <Search size={11} /> 주소 찾기
+                                    </button>
+                                </div>
+                                <input
+                                    value={form.address}
+                                    onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))}
+                                    placeholder="도로명 주소"
+                                    className="w-full px-3 py-2 mt-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+                                />
+                                <input
+                                    value={form.address_detail}
                                     onChange={e => setForm(prev => ({ ...prev, address_detail: e.target.value }))}
-                                    placeholder="456호"
-                                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+                                    placeholder="상세 주소 (동/호수)"
+                                    className="w-full px-3 py-2 mt-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+                                />
                             </div>
 
                             {/* Shipping */}
@@ -329,6 +361,33 @@ export function OrderDetailModal({
                             </button>
                         </div>
                     </motion.div>
+
+                    {/* Daum Postcode overlay */}
+                    {postcodeOpen && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                            onClick={() => setPostcodeOpen(false)}>
+                            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between p-3 border-b border-slate-100">
+                                    <h3 className="text-sm font-bold text-slate-800">주소 검색</h3>
+                                    <button onClick={() => setPostcodeOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                        <X size={18} />
+                                    </button>
+                                </div>
+                                <DaumPostcode
+                                    style={{ height: 420 }}
+                                    onComplete={(data: any) => {
+                                        setForm(prev => ({
+                                            ...prev,
+                                            postal_code: data.zonecode || '',
+                                            address: data.roadAddress || data.jibunAddress || '',
+                                        }));
+                                        setPostcodeOpen(false);
+                                    }}
+                                />
+                            </div>
+                        </motion.div>
+                    )}
                 </motion.div>
             )}
         </AnimatePresence>

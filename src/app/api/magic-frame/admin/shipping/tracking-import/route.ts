@@ -6,6 +6,55 @@ function normalizePhone(phone: string): string {
     return phone.replace(/[^0-9]/g, '');
 }
 
+function chunk<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
+
+type ExistingUser = {
+    id: string;
+    name: string;
+    haengbun: string | null;
+    phone: string | null;
+    tracking_number: string | null;
+    shipping_carrier: string | null;
+    shipping_status: string | null;
+};
+
+// PostgREST 1000행 cap 회피 — CSV 의 행번/전화 list 로 타겟 조회 (chunked IN)
+async function fetchMatchingUsers(haengbuns: string[], phones: string[]): Promise<ExistingUser[]> {
+    const all: ExistingUser[] = [];
+    const seen = new Set<string>();
+    const SELECT = 'id, name, haengbun, phone, tracking_number, shipping_carrier, shipping_status';
+
+    for (const c of chunk(haengbuns, 500)) {
+        if (!c.length) continue;
+        const { data, error } = await supabaseAdmin
+            .from('magic_frame_users')
+            .select(SELECT)
+            .in('haengbun', c);
+        if (error) throw new Error(error.message);
+        for (const u of (data || []) as ExistingUser[]) {
+            if (!seen.has(u.id)) { seen.add(u.id); all.push(u); }
+        }
+    }
+
+    for (const c of chunk(phones, 500)) {
+        if (!c.length) continue;
+        const { data, error } = await supabaseAdmin
+            .from('magic_frame_users')
+            .select(SELECT)
+            .in('phone', c);
+        if (error) throw new Error(error.message);
+        for (const u of (data || []) as ExistingUser[]) {
+            if (!seen.has(u.id)) { seen.add(u.id); all.push(u); }
+        }
+    }
+
+    return all;
+}
+
 // POST: Preview — match CSV entries against existing users
 export async function POST(req: NextRequest) {
     if (!await checkAdminAuth(req)) {
@@ -19,25 +68,31 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: '데이터가 없습니다.' }, { status: 400 });
         }
 
-        const { data: users, error } = await supabaseAdmin
-            .from('magic_frame_users')
-            .select('id, name, phone, tracking_number, shipping_carrier, shipping_status');
+        const haengbunList = Array.from(new Set(
+            entries.map((e: any) => (e.haengbun || '').trim()).filter(Boolean)
+        )) as string[];
+        const phoneList = Array.from(new Set(
+            entries
+                .filter((e: any) => !(e.haengbun || '').trim() && e.phone)
+                .map((e: any) => normalizePhone(e.phone))
+                .filter(Boolean)
+        )) as string[];
 
-        if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
-        }
+        const users = await fetchMatchingUsers(haengbunList, phoneList);
 
-        const userMap = new Map<string, typeof users[0]>();
-        for (const u of users || []) {
-            const key = `${u.name}|${normalizePhone(u.phone)}`;
-            userMap.set(key, u);
+        const userMap = new Map<string, ExistingUser>();
+        for (const u of users) {
+            if (u.haengbun) userMap.set(`hb|${u.haengbun.trim()}`, u);
+            if (u.phone) userMap.set(`ph|${u.name}|${normalizePhone(u.phone)}`, u);
         }
 
         const results = entries.map((entry: any) => {
+            const cleanHaengbun = (entry.haengbun || '').trim();
             const cleanPhone = normalizePhone(entry.phone || '');
             const cleanName = (entry.name || '').trim();
-            const key = `${cleanName}|${cleanPhone}`;
-            const matched = userMap.get(key);
+            const matched = cleanHaengbun
+                ? userMap.get(`hb|${cleanHaengbun}`)
+                : userMap.get(`ph|${cleanName}|${cleanPhone}`);
 
             return {
                 name: cleanName,
@@ -87,29 +142,33 @@ export async function PUT(req: NextRequest) {
         const errors: string[] = [];
         const now = new Date().toISOString();
 
-        for (const match of matches) {
-            const { userId, tracking_number, shipping_carrier } = match;
-
-            if (!userId || !tracking_number) {
-                errors.push(`${match.name || userId}: 필수 데이터 누락`);
-                continue;
+        const valid = matches.filter((m: any) => {
+            if (!m.userId || !m.tracking_number) {
+                errors.push(`${m.name || m.userId}: 필수 데이터 누락`);
+                return false;
             }
+            return true;
+        });
 
-            const { error } = await supabaseAdmin
-                .from('magic_frame_users')
-                .update({
-                    tracking_number,
-                    shipping_carrier: shipping_carrier || 'CJ대한통운',
-                    shipping_status: 'shipped',
-                    shipped_at: now,
-                    updated_at: now,
-                })
-                .eq('id', userId);
-
-            if (error) {
-                errors.push(`${match.name || userId}: ${error.message}`);
-            } else {
-                updatedCount++;
+        // Vercel 10s 타임아웃 회피 — 50건 청크로 병렬 update
+        for (const c of chunk(valid, 50)) {
+            const settled = await Promise.all(c.map(async (m: any) => {
+                const { error } = await supabaseAdmin
+                    .from('magic_frame_users')
+                    .update({
+                        tracking_number: m.tracking_number,
+                        shipping_carrier: m.shipping_carrier || 'CJ대한통운',
+                        shipping_status: 'shipped',
+                        submitted: true,  // 발송완료 탭 노출 보장
+                        shipped_at: now,
+                        updated_at: now,
+                    })
+                    .eq('id', m.userId);
+                return { name: m.name || m.userId, error };
+            }));
+            for (const r of settled) {
+                if (r.error) errors.push(`${r.name}: ${r.error.message}`);
+                else updatedCount++;
             }
         }
 

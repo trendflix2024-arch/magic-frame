@@ -27,6 +27,8 @@ export async function PATCH(req: NextRequest) {
 
         if (shipping_carrier !== undefined) updateData.shipping_carrier = shipping_carrier;
         if (tracking_number !== undefined) updateData.tracking_number = tracking_number;
+        // shipping_status 가 'pending' 외 면 submitted=true 강제 (탭 필터 노출 보장)
+        if (shipping_status !== 'pending') updateData.submitted = true;
         if (shipping_status === 'shipped') updateData.shipped_at = new Date().toISOString();
 
         const { error } = await supabaseAdmin
