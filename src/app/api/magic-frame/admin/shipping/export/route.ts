@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
+import { getSource } from '@/lib/magic-frame-sources';
 
 function formatPhone(phone: string) {
     if (!phone) return '';
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     const buildQuery = () => {
         let q = supabaseAdmin
             .from('magic_frame_users')
-            .select('name, haengbun, phone, postal_code, address, address_detail, shipping_memo, shipping_status, tracking_number, shipping_carrier, created_at, submitted_at, updated_at, submitted');
+            .select('name, haengbun, phone, postal_code, address, address_detail, shipping_memo, shipping_status, tracking_number, shipping_carrier, created_at, submitted_at, updated_at, submitted, source');
         if (submittedOnly) q = q.eq('submitted', true);
         if (search) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%,haengbun.ilike.%${search}%`);
         if (dateFrom) q = q.gte('created_at', dateFrom);
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
         if (data.length < PAGE) break;
     }
 
-    const header = '번호,이름,행번,연락처,우편번호,주소,상세주소,배송메모,배송상태,운송장번호,택배사,등록일';
+    const header = '번호,이름,행번,연락처,우편번호,주소,상세주소,배송메모,배송상태,운송장번호,택배사,등록일,출처';
     const rows = users.map((u, i) => {
         const fields = [
             i + 1,
@@ -93,6 +94,7 @@ export async function GET(req: NextRequest) {
             u.shipping_carrier || '',
             // 실제 고객 제출 시각 우선. 없으면 updated_at 근사 (대부분 admin 미터치 상태). 둘 다 없으면 빈칸.
             formatKstDateTime(u.submitted ? (u.submitted_at || u.updated_at) : null),
+            getSource(u.source)?.label || '',
         ];
         return fields.map(f => `"${String(f).replace(/"/g, '""')}"`).join(',');
     });

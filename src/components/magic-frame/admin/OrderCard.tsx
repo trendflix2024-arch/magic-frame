@@ -40,6 +40,7 @@ export interface UnifiedOrder {
     shipping_carrier: string | null;
     shipping_memo: string | null;
     shipped_at: string | null;
+    source: string | null; // 구매처 key (magic-frame-sources.ts)
     addon_orders: AddonOrder[];
 }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
 
-const USER_COLUMNS = 'id, name, haengbun, phone, submitted, image_url, image_type, updated_at, created_at, shipping_status, address, postal_code, address_detail, tracking_number, shipping_carrier, shipping_memo, shipped_at';
+const USER_COLUMNS = 'id, name, haengbun, phone, submitted, image_url, image_type, updated_at, created_at, shipping_status, address, postal_code, address_detail, tracking_number, shipping_carrier, shipping_memo, shipped_at, source';
 
 function getUnifiedStatus(submitted: boolean, shippingStatus: string): string {
     if (!submitted) return 'waiting';
@@ -20,8 +20,7 @@ interface FilterParams {
     status: string;
     dateFrom: string;
     dateTo: string;
-    allowedUserIds?: string[] | null;
-    excludedUserIds?: string[] | null;
+    source: string; // 'all' 또는 구매처 key (magic_frame_users.source)
 }
 
 function buildUserQuery(params: FilterParams, forCount = false) {
@@ -35,14 +34,7 @@ function buildUserQuery(params: FilterParams, forCount = false) {
     if (params.dateFrom) q = q.gte('created_at', params.dateFrom);
     if (params.dateTo) q = q.lte('created_at', params.dateTo);
 
-    if (params.allowedUserIds) {
-        // 해당 출처 고객이 0명이면 빈 결과를 돌려준다. id 는 uuid 컬럼이라 uuid 형식 값이어야 한다.
-        if (params.allowedUserIds.length === 0) q = q.eq('id', '00000000-0000-0000-0000-000000000000');
-        else q = q.in('id', params.allowedUserIds);
-    }
-    if (params.excludedUserIds && params.excludedUserIds.length) {
-        q = q.not('id', 'in', `(${params.excludedUserIds.join(',')})`);
-    }
+    if (params.source && params.source !== 'all') q = q.eq('source', params.source);
 
     switch (params.status) {
         case 'waiting': q = q.eq('submitted', false); break;
@@ -52,19 +44,6 @@ function buildUserQuery(params: FilterParams, forCount = false) {
         case 'shipped': q = q.eq('submitted', true).eq('shipping_status', 'shipped'); break;
     }
     return q;
-}
-
-async function resolveSourceFilter(source: string): Promise<{ allowedUserIds: string[] | null; excludedUserIds: string[] | null }> {
-    if (source === 'all') return { allowedUserIds: null, excludedUserIds: null };
-    const { data: blob } = await supabaseAdmin.storage.from('magic-frame').download('user-sources.json');
-    let map: Record<string, string> = {};
-    if (blob) {
-        try { map = JSON.parse(await blob.text()); } catch { map = {}; }
-    }
-    const allowedUserIds = Object.entries(map)
-        .filter(([, src]) => src === source)
-        .map(([uid]) => uid);
-    return { allowedUserIds, excludedUserIds: null };
 }
 
 export async function GET(req: NextRequest) {
@@ -82,8 +61,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Number(url.searchParams.get('limit') || '50'), 200);
     const offset = Math.max(Number(url.searchParams.get('offset') || '0'), 0);
 
-    const { allowedUserIds, excludedUserIds } = await resolveSourceFilter(source);
-    const filterParams: FilterParams = { search, status, dateFrom, dateTo, allowedUserIds, excludedUserIds };
+    const filterParams: FilterParams = { search, status, dateFrom, dateTo, source };
 
     // 1. Paginated users query
     let userQuery = buildUserQuery(filterParams, false) as any;
@@ -95,7 +73,7 @@ export async function GET(req: NextRequest) {
     const countQuery = buildUserQuery(filterParams, true) as any;
 
     // 3. Pipeline counts (always unfiltered by status, respects search/date/source)
-    const baseCountParams: FilterParams = { search, dateFrom, dateTo, status: 'all', allowedUserIds, excludedUserIds };
+    const baseCountParams: FilterParams = { search, dateFrom, dateTo, status: 'all', source };
     const allCountQ = buildUserQuery({ ...baseCountParams, status: 'all' }, true) as any;
     const waitingCountQ = buildUserQuery({ ...baseCountParams, status: 'waiting' }, true) as any;
     const receivedCountQ = buildUserQuery({ ...baseCountParams, status: 'received' }, true) as any;

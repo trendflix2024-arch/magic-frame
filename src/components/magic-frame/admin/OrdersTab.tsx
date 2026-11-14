@@ -73,9 +73,6 @@ export function OrdersTab() {
     const [bulkConfirm, setBulkConfirm] = useState<{ status: string; label: string } | null>(null);
     const [bulkLoading, setBulkLoading] = useState(false);
 
-    // Source map (userId → source)
-    const [sourceMap, setSourceMap] = useState<Record<string, string>>({});
-
     // Selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -134,13 +131,6 @@ export function OrdersTab() {
 
     // Reset to page 0 when filters change
     useEffect(() => { setPage(0); }, [search, statusFilter, sourceFilter, sort, datePreset]);
-
-    useEffect(() => {
-        adminFetch('/api/magic-frame/admin/user-sources')
-            .then(r => r.json())
-            .then(d => setSourceMap(d.sources || {}))
-            .catch(() => {});
-    }, []);
 
     // ── Handlers ──
 
@@ -433,8 +423,7 @@ export function OrdersTab() {
 
                     <div className="space-y-2">
                         {orders.map(order => {
-                            const src = sourceMap[order.id];
-                            const srcCfg = getSource(src);
+                            const srcCfg = getSource(order.source);
                             return (
                                 <OrderCard
                                     key={order.id}

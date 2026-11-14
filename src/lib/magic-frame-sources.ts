@@ -1,5 +1,5 @@
 // 구매처(출처) 목록 — 로그인 화면 선택칸, 서버 검증, 관리자 필터가 모두 여기서 읽는다.
-// 새 구매처는 MARKET_SOURCES 에 한 줄 추가하면 된다. key 는 user-sources.json 에 저장되므로 바꾸지 말 것.
+// 새 구매처는 MARKET_SOURCES 에 한 줄 추가하면 된다. key 는 magic_frame_users.source 컬럼에 저장되므로 바꾸지 말 것.
 
 export interface SourceOption {
     key: string;

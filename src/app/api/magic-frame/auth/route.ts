@@ -7,18 +7,11 @@ const ADMIN_NAME = (process.env.ADMIN_NAME || '').trim();
 const ADMIN_PHONE = (process.env.ADMIN_PHONE || '').replace(/[^0-9]/g, '');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
-const SOURCES_PATH = 'user-sources.json';
-
+// 구매처는 magic_frame_users.source 컬럼에 저장한다. 다시 로그인하면 마지막에 고른 구매처로 바뀐다.
+// 실패해도 로그인은 막지 않는다.
 async function recordSource(userId: string, source: string) {
     try {
-        const { data } = await supabaseAdmin.storage.from('magic-frame').download(SOURCES_PATH);
-        const map: Record<string, string> = data ? JSON.parse(await data.text()) : {};
-        map[userId] = source;
-        await supabaseAdmin.storage.from('magic-frame').upload(
-            SOURCES_PATH,
-            Buffer.from(JSON.stringify(map)),
-            { contentType: 'application/json', upsert: true }
-        );
+        await supabaseAdmin.from('magic_frame_users').update({ source }).eq('id', userId);
     } catch { /* non-critical */ }
 }
 
@@ -63,6 +56,7 @@ export async function POST(req: NextRequest) {
                 .insert({
                     name: cleanName,
                     phone: cleanPhone,
+                    source,
                     submitted: false,
                     shipping_status: 'pending',
                 })
@@ -73,7 +67,6 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: '사용자 등록 중 오류가 발생했습니다.' }, { status: 500 });
             }
 
-            await recordSource(created.id, source);
             return NextResponse.json({ userId: created.id, submitted: false });
         }
 
