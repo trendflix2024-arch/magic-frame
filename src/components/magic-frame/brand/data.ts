@@ -65,3 +65,30 @@ export function calcPricing(opts: { frameSize: FrameSizeId | string; qty: number
 export function fmtKRW(n: number) {
     return n.toLocaleString('ko-KR') + '원';
 }
+
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function nextWeekday(d: Date) {
+    const r = new Date(d);
+    do r.setDate(r.getDate() + 1); while (r.getDay() === 0 || r.getDay() === 6);
+    return r;
+}
+
+// 평일 14:00 이전 주문 → 당일 발송, 그 외 → 다음 평일 발송. 도착은 발송 후 2영업일 (공휴일 미반영).
+export function calcShipDates(now: Date = new Date()) {
+    const isWeekday = now.getDay() !== 0 && now.getDay() !== 6;
+    const ship = isWeekday && now.getHours() < 14 ? new Date(now) : nextWeekday(now);
+    const arrive = nextWeekday(nextWeekday(ship));
+    return { ship, arrive };
+}
+
+// 2026.11.16 (월)
+export function fmtDateFull(d: Date) {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} (${WEEKDAYS[d.getDay()]})`;
+}
+
+// 11월 18일(수)
+export function fmtDateShort(d: Date) {
+    return `${d.getMonth() + 1}월 ${d.getDate()}일(${WEEKDAYS[d.getDay()]})`;
+}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Blob, DetailRow, Icon, TopBar } from '../atoms';
-import { calcPricing, findColor, findSize, fmtKRW } from '../data';
+import { calcPricing, calcShipDates, findColor, findSize, fmtDateFull, fmtKRW } from '../data';
 import { useBrandStore } from '../store';
 
 export function OrderCompleteScreen() {
@@ -13,6 +13,7 @@ export function OrderCompleteScreen() {
 
     // 주문번호는 화면 최초 마운트 시 한 번 생성 (다크 모드 토글로 재계산되지 않도록).
     const [orderNum] = useState(() => 'MJ-' + String(Math.floor(Math.random() * 90000) + 10000));
+    const [shipDates] = useState(() => calcShipDates());
 
     // 화면이 첫 렌더되면 콘솔에 데모 안내(아무 동작도 하지 않지만, 의도 명시).
     useEffect(() => {
@@ -83,8 +84,8 @@ export function OrderCompleteScreen() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <DetailRow label="액자" value={`${size.label} · ${color.label} · ${store.finish === 'glossy' ? '유광' : '매트'}`} />
                         <DetailRow label="수량" value={`${store.qty}개`} />
-                        <DetailRow label="발송 예정" value="2026.04.28 (화)" />
-                        <DetailRow label="도착 예정" value="2026.04.30 (목) 무렵" />
+                        <DetailRow label="발송 예정" value={fmtDateFull(shipDates.ship)} />
+                        <DetailRow label="도착 예정" value={`${fmtDateFull(shipDates.arrive)} 무렵`} />
                     </div>
                 </div>
 

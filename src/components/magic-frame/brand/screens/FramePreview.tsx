@@ -262,13 +262,23 @@ function CropResultInner() {
                 style={{
                     width: s.cropAspect === '4:3' ? 340 : 280,
                     aspectRatio: s.cropAspect === '4:3' ? '4 / 3' : '3 / 4',
-                    backgroundImage: `url(${PHOTOS.couple2})`,
-                    backgroundSize: `${s.cropZoom}%`,
-                    backgroundPosition: 'center',
-                    filter: filterCSS(s),
+                    overflow: 'hidden',
                     borderRadius: 2,
                 }}
-            />
+            >
+                <div
+                    style={{
+                        width: '100%',
+                        height: '100%',
+                        backgroundImage: `url(${PHOTOS.couple2})`,
+                        backgroundSize: 'cover',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'center',
+                        transform: `scale(${s.cropZoom / 100})`,
+                        filter: filterCSS(s),
+                    }}
+                />
+            </div>
             <div
                 style={{
                     marginTop: 12,

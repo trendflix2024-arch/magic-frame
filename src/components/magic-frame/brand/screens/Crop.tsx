@@ -42,14 +42,25 @@ export function CropScreen() {
                                         style={{
                                             width: previewW - 36,
                                             aspectRatio: aspect,
-                                            backgroundImage: `url(${PHOTOS.couple2})`,
-                                            backgroundSize: `${store.cropZoom}%`,
-                                            backgroundPosition: 'center',
-                                            filter: filterCSS(store),
+                                            overflow: 'hidden',
                                             borderRadius: 2,
-                                            transition: 'all .25s ease',
                                         }}
-                                    />
+                                    >
+                                        {/* cover 로 틀을 채운 뒤 scale 로 확대/축소 — `${zoom}%` 는 너비만 맞춰 세로 틀에서 사진이 반복됨 */}
+                                        <div
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                backgroundImage: `url(${PHOTOS.couple2})`,
+                                                backgroundSize: 'cover',
+                                                backgroundRepeat: 'no-repeat',
+                                                backgroundPosition: 'center',
+                                                transform: `scale(${store.cropZoom / 100})`,
+                                                filter: filterCSS(store),
+                                                transition: 'all .25s ease',
+                                            }}
+                                        />
+                                    </div>
                                     <div
                                         style={{
                                             marginTop: 14,

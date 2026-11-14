@@ -4,8 +4,10 @@ import { Field, Icon, PriceRow, SectionLabel, TopBar } from '../atoms';
 import {
     PHOTOS,
     calcPricing,
+    calcShipDates,
     findColor,
     findSize,
+    fmtDateShort,
     fmtKRW,
 } from '../data';
 import { SoftFrame } from '../frame';
@@ -183,7 +185,7 @@ export function OrderSummaryScreen() {
                                     color: '#3a6e4a',
                                 }}
                             >
-                                <Icon.truck /> <span>4월 30일(목) 무렵 도착 예정</span>
+                                <Icon.truck /> <span>{fmtDateShort(calcShipDates().arrive)} 무렵 도착 예정</span>
                             </div>
                             <button
                                 className="mj-btn mj-btn-primary mj-btn-lg mj-btn-block"
