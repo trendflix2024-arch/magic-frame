@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Plus, X, Crop, RefreshCw, Move } from 'lucide-react';
 import type { TextLayer } from './PhotoCropper';
-import { PhotoCropModal } from './PhotoCropModal';
+import { PhotoCropModal, type CropState } from './PhotoCropModal';
 import {
     DEFAULT_FONT,
     todayIso,
@@ -268,9 +268,10 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const [texts, setTexts] = useState<TextLayer[]>([]);
     const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
     const [pickedDate, setPickedDate] = useState<string>(() => todayIso());
-    const [pendingCrop, setPendingCrop] = useState<{ src: string; index: number; aspect: number } | null>(null);
-    // 슬롯별 크롭 전 원본 (재편집 시 화질 손실 없이 다시 자르기 위함). 임시저장엔 포함 안 됨 → 없으면 현재 이미지로 편집.
-    const [originals, setOriginals] = useState<(string | null)[]>([]);
+    const [pendingCrop, setPendingCrop] = useState<{ src: string; index: number; aspect: number; initialCrop: CropState | null; isEdit: boolean } | null>(null);
+    // 슬롯별 크롭 전 원본 + 마지막 크롭 상태 (재편집 시 화질 손실 없이, 이전 확대·위치에서 이어서 자르기 위함).
+    // 임시저장엔 포함 안 됨 → 없으면 현재 이미지로 편집.
+    const [originals, setOriginals] = useState<({ src: string; crop: CropState } | null)[]>([]);
     const selectedText = texts.find(t => t.id === selectedTextId) ?? null;
     const textDragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
     const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -632,17 +633,18 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         img.src = src;
     });
 
-    const openCrop = (index: number, src: string) => {
+    const openCrop = (index: number, src: string, initialCrop: CropState | null = null, isEdit = false) => {
         const cell = currentLayout.cells[index];
         if (!cell) return;
         const aspect = (cell.w * previewW) / (cell.h * previewH);
-        setPendingCrop({ src, index, aspect });
+        setPendingCrop({ src, index, aspect, initialCrop, isEdit });
     };
 
-    // 이미 넣은 사진 다시 자르기 — 원본이 있으면 원본에서, 없으면(임시저장 복원 등) 현재 이미지에서
+    // 이미 넣은 사진 다시 자르기 — 원본이 있으면 원본 + 이전 확대·위치에서 이어서, 없으면(임시저장 복원 등) 현재 이미지에서
     const handleEditImage = (index: number) => {
-        const src = originals[index] ?? images[index];
-        if (src) openCrop(index, src);
+        const o = originals[index];
+        const src = o?.src ?? images[index];
+        if (src) openCrop(index, src, o?.crop ?? null, true);
     };
 
     const [converting, setConverting] = useState(false);
@@ -664,13 +666,13 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         }
     };
 
-    const handleCropApply = (croppedDataUrl: string) => {
+    const handleCropApply = (croppedDataUrl: string, crop: CropState) => {
         if (!pendingCrop) return;
-        const i = pendingCrop.index;
-        const src = pendingCrop.src;
+        const { index: i, src, isEdit } = pendingCrop;
         setImages(prev => { const next = [...prev]; next[i] = croppedDataUrl; return next; });
-        setTransforms(prev => { const next = [...prev]; next[i] = { ...DEFAULT_T }; return next; });
-        setOriginals(prev => { const next = [...prev]; next[i] = src; return next; });
+        // 수정이면 칸 안에서 맞춘 확대·위치도 유지, 새 사진이면 초기화
+        setTransforms(prev => { const next = [...prev]; next[i] = isEdit && next[i] ? next[i] : { ...DEFAULT_T }; return next; });
+        setOriginals(prev => { const next = [...prev]; next[i] = { src, crop }; return next; });
         setPendingCrop(null);
     };
 
@@ -1080,6 +1082,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                 <PhotoCropModal
                     imageSrc={pendingCrop.src}
                     aspect={pendingCrop.aspect}
+                    initialCrop={pendingCrop.initialCrop}
                     onApply={handleCropApply}
                     onCancel={handleCropCancel}
                 />

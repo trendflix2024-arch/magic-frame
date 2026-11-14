@@ -3,17 +3,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Check, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
+// 크롭 상태 — pan 은 프레임 크기 대비 비율로 저장해 화면 폭이 달라도 같은 위치로 복원된다
+export interface CropState {
+    zoom: number;
+    px: number; // pan.x / frameW
+    py: number; // pan.y / frameH
+    aspect: number; // 이 상태를 만든 칸 비율. 다른 비율 칸에서는 복원하지 않음
+}
+
 interface PhotoCropModalProps {
     imageSrc: string | null;
     aspect: number; // width / height of target cell
-    onApply: (croppedDataUrl: string) => void;
+    initialCrop?: CropState | null;
+    onApply: (croppedDataUrl: string, crop: CropState) => void;
     onCancel: () => void;
 }
 
 const MAX_FRAME_W_DEFAULT = 320;
 const MAX_FRAME_H = 400;
 
-export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCropModalProps) {
+export function PhotoCropModal({ imageSrc, aspect, initialCrop, onApply, onCancel }: PhotoCropModalProps) {
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [img, setImg] = useState<HTMLImageElement | null>(null);
@@ -47,14 +56,18 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
         i.onload = () => {
             if (cancelled) return;
             setImg(i);
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
+            // 같은 비율 칸의 이전 크롭이 있으면 그대로 이어서 편집
+            const restore = initialCrop && Math.abs(initialCrop.aspect - aspect) < 0.01;
+            setZoom(restore ? initialCrop.zoom : 1);
+            setPan(restore ? { x: initialCrop.px * frameW, y: initialCrop.py * frameH } : { x: 0, y: 0 });
         };
         i.src = imageSrc;
         return () => {
             cancelled = true;
             i.onload = null;
         };
+        // 초기 크롭 복원은 이미지가 바뀔 때 한 번만 — 프레임 크기 변화에 다시 리셋되지 않게 imageSrc 만 의존
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [imageSrc]);
 
     const imgW = img?.naturalWidth ?? 0;
@@ -139,7 +152,7 @@ export function PhotoCropModal({ imageSrc, aspect, onApply, onCancel }: PhotoCro
         const dh = imgH * outScale;
         ctx.drawImage(img, 0, 0, imgW, imgH, dx, dy, dw, dh);
 
-        onApply(canvas.toDataURL('image/jpeg', 0.92));
+        onApply(canvas.toDataURL('image/jpeg', 0.92), { zoom, px: pan.x / frameW, py: pan.y / frameH, aspect });
     };
 
     if (!imageSrc) return null;
