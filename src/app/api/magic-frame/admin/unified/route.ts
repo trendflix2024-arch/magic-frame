@@ -36,7 +36,8 @@ function buildUserQuery(params: FilterParams, forCount = false) {
     if (params.dateTo) q = q.lte('created_at', params.dateTo);
 
     if (params.allowedUserIds) {
-        if (params.allowedUserIds.length === 0) q = q.eq('id', '__none__');
+        // 해당 출처 고객이 0명이면 빈 결과를 돌려준다. id 는 uuid 컬럼이라 uuid 형식 값이어야 한다.
+        if (params.allowedUserIds.length === 0) q = q.eq('id', '00000000-0000-0000-0000-000000000000');
         else q = q.in('id', params.allowedUserIds);
     }
     if (params.excludedUserIds && params.excludedUserIds.length) {
