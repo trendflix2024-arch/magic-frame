@@ -21,7 +21,7 @@ export function AdminLoginForm({ onSuccess }: { onSuccess: () => void }) {
             const res = await fetch('/api/magic-frame/auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), haengbun: code.replace(/[^0-9]/g, ''), adminOnly: true }),
+                body: JSON.stringify({ name: name.trim(), haengbun: code.replace(/[^0-9]/g, '') }),
             });
             const data = await res.json();
             if (data.isAdmin && data.adminToken) {

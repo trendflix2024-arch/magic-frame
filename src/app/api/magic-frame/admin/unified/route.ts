@@ -61,12 +61,6 @@ async function resolveSourceFilter(source: string): Promise<{ allowedUserIds: st
     if (blob) {
         try { map = JSON.parse(await blob.text()); } catch { map = {}; }
     }
-    if (source === 'gajeong') {
-        const excludedUserIds = Object.entries(map)
-            .filter(([, src]) => src && src !== 'gajeong')
-            .map(([uid]) => uid);
-        return { allowedUserIds: null, excludedUserIds };
-    }
     const allowedUserIds = Object.entries(map)
         .filter(([, src]) => src === source)
         .map(([uid]) => uid);

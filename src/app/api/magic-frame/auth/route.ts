@@ -24,7 +24,7 @@ async function recordSource(userId: string, source: string) {
 
 export async function POST(req: NextRequest) {
     try {
-        const { name, haengbun, phone, source = 'gajeong', adminOnly = false } = await req.json();
+        const { name, haengbun, phone, source } = await req.json();
         const cleanName = name?.trim() || '';
 
         if (!cleanName) {
@@ -77,50 +77,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ userId: created.id, submitted: false });
         }
 
-        // Haengbun-based auth (gajeong / admin)
-        if (!haengbun?.trim()) {
-            return NextResponse.json({ error: '이름과 행번을 입력해 주세요.' }, { status: 400 });
+        // 관리자 로그인 (AdminLoginForm). 가정의 달 종료로 고객용 행번 로그인은 없다.
+        // 관리자 번호는 예전 필드명 그대로 haengbun 으로 받고, ADMIN_PHONE 환경변수와 비교한다.
+        const adminCode = typeof haengbun === 'string' ? haengbun.trim() : '';
+        if (!adminCode) {
+            return NextResponse.json({ error: '구매처와 연락처를 입력해 주세요.' }, { status: 400 });
         }
 
-        const cleanHaengbun = haengbun.trim();
-
-        // Check admin credentials (ADMIN_PHONE env var serves as the admin's haengbun)
-        if (ADMIN_NAME && ADMIN_PHONE && cleanName === ADMIN_NAME && cleanHaengbun === ADMIN_PHONE) {
+        if (ADMIN_NAME && ADMIN_PHONE && cleanName === ADMIN_NAME && adminCode === ADMIN_PHONE) {
             return NextResponse.json({ isAdmin: true, adminToken: ADMIN_TOKEN });
         }
 
-        // 관리자 로그인 폼에서 온 요청은 고객 조회로 넘어가지 않는다
-        if (adminOnly) {
-            return NextResponse.json({ error: '관리자 정보가 올바르지 않습니다.' }, { status: 401 });
-        }
-
-        // Check if user exists by name + haengbun
-        const { data: existing } = await supabase
-            .from('magic_frame_users')
-            .select('id, submitted, image_url, updated_at')
-            .eq('name', cleanName)
-            .eq('haengbun', cleanHaengbun)
-            .single();
-
-        if (!existing) {
-            return NextResponse.json({
-                error: '등록되지 않은 사용자입니다. 관리자에게 문의해주세요.',
-            }, { status: 404 });
-        }
-
-        // Record source (non-blocking)
-        await recordSource(existing.id, source);
-
-        if (existing.submitted) {
-            return NextResponse.json({
-                submitted: true,
-                userId: existing.id,
-                updatedAt: existing.updated_at,
-                message: '사진이 확정되어 제작 중에 있습니다. 사진 변경을 원하시면 이메일로 문의해 주세요.',
-            }, { status: 200 });
-        }
-
-        return NextResponse.json({ userId: existing.id, submitted: false });
+        return NextResponse.json({ error: '관리자 정보가 올바르지 않습니다.' }, { status: 401 });
     } catch (e: any) {
         console.error('auth route error:', e);
         return NextResponse.json({ error: '인증 중 오류가 발생했습니다.' }, { status: 500 });

@@ -23,12 +23,7 @@ export const MARKET_SOURCES: SourceOption[] = [
     { key: 'etc',     label: '기타',           badge: DEFAULT_BADGE },
 ];
 
-// 이름+행번으로 로그인하는 구매처 (login)
-export const GAJEONG_SOURCE: SourceOption = { key: 'gajeong', label: '가정의달', badge: 'bg-indigo-100 text-indigo-600' };
-
-export const ALL_SOURCES: SourceOption[] = [GAJEONG_SOURCE, ...MARKET_SOURCES];
-
-const SOURCE_BY_KEY = new Map(ALL_SOURCES.map(s => [s.key, s]));
+const SOURCE_BY_KEY = new Map(MARKET_SOURCES.map(s => [s.key, s]));
 
 export function getSource(key: string | null | undefined): SourceOption | null {
     return key ? SOURCE_BY_KEY.get(key) ?? null : null;

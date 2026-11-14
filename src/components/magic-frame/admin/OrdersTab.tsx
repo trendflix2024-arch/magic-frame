@@ -8,7 +8,7 @@ import {
     ChevronLeft, ChevronRight, Calendar, Users, Sparkles, Tag,
 } from 'lucide-react';
 import { adminFetch } from '@/lib/admin-token';
-import { ALL_SOURCES, getSource } from '@/lib/magic-frame-sources';
+import { MARKET_SOURCES, getSource } from '@/lib/magic-frame-sources';
 import { CsvImportModal } from './CsvImportModal';
 import { SingleRegisterModal } from './SingleRegisterModal';
 import { TrackingImportModal } from './TrackingImportModal';
@@ -326,7 +326,7 @@ export function OrdersTab() {
                             sourceFilter === 'all' ? 'bg-slate-50 text-slate-500' : 'bg-indigo-600 text-white'
                         }`}>
                         <option value="all">전체 출처</option>
-                        {ALL_SOURCES.map(s => (
+                        {MARKET_SOURCES.map(s => (
                             <option key={s.key} value={s.key}>{s.label}</option>
                         ))}
                     </select>
