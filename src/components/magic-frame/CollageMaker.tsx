@@ -10,10 +10,13 @@ import {
 } from './textPresets';
 import type { ControlsProps } from './collage/types';
 import { TabbedControls } from './collage/TabbedControls';
-import { saveDraftValue, loadDraftValue, clearDraftValue } from '@/lib/magic-frame-draft-storage';
+import { saveDraftValue, loadDraftValue, clearDraftValue, touchDraft, purgeExpiredDraft, forgetDraft } from '@/lib/magic-frame-draft-storage';
 import { ensureJpeg, isHeic } from '@/lib/heic-convert';
 
 const DRAFT_IMAGES_KEY = 'collage_images';
+// 수정용 원본 + 확대·위치. 이미지와 다른 키라 저장 실패 시 어긋날 수 있어, 각 항목에 짝이 되는 이미지 지문(fp)을 붙여 불러올 때 대조한다.
+const DRAFT_ORIGINALS_KEY = 'collage_originals';
+const imageFingerprint = (dataUrl: string) => `${dataUrl.length}:${dataUrl.slice(-64)}`;
 
 interface CollageProps {
     onFinalize: (blob: Blob) => void;
@@ -382,6 +385,8 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     useEffect(() => {
         (async () => {
             try {
+                // 마지막 임시저장 후 30일 지났으면 지우고 빈 상태로 시작
+                await purgeExpiredDraft('magic_frame_collage_draft', [DRAFT_IMAGES_KEY, DRAFT_ORIGINALS_KEY]);
                 const saved = localStorage.getItem('magic_frame_collage_draft');
                 let savedLayoutKey: string | null = null;
                 let targetSlots = 4;
@@ -410,6 +415,17 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                     if (Array.isArray(arr)) {
                         const padded = Array(targetSlots).fill(null).map((_, i) => arr[i] ?? null);
                         setImages(padded);
+                        // 원본 복원 — 지문이 현재 이미지와 맞는 칸만 (예전 임시저장엔 이 키가 없음 → 그냥 건너뜀)
+                        try {
+                            const origRaw = await loadDraftValue(DRAFT_ORIGINALS_KEY);
+                            const saved: ({ src: string; crop: CropState; fp: string } | null)[] = origRaw ? JSON.parse(origRaw) : [];
+                            if (Array.isArray(saved)) {
+                                setOriginals(padded.map((img, i) => {
+                                    const o = saved[i];
+                                    return img && o && o.src && o.fp === imageFingerprint(img) ? { src: o.src, crop: o.crop } : null;
+                                }));
+                            }
+                        } catch { /* 원본 없이도 편집 가능 */ }
                     }
                 }
             } catch { /* ignore */ }
@@ -696,7 +712,9 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         setTexts([]);
         setSelectedTextId(null);
         localStorage.removeItem('magic_frame_collage_draft');
+        forgetDraft('magic_frame_collage_draft');
         clearDraftValue(DRAFT_IMAGES_KEY).catch(() => { });
+        clearDraftValue(DRAFT_ORIGINALS_KEY).catch(() => { });
     };
 
     const handleTempSave = async () => {
@@ -706,9 +724,18 @@ export function CollageMaker({ onFinalize }: CollageProps) {
             const hasAny = images.some(Boolean);
             if (hasAny) {
                 await saveDraftValue(DRAFT_IMAGES_KEY, JSON.stringify(images));
+                const origs = images.map((img, i) => {
+                    const o = originals[i];
+                    return img && o ? { src: o.src, crop: o.crop, fp: imageFingerprint(img) } : null;
+                });
+                // 원본 저장 실패는 치명적이지 않음(사진 자체는 저장됨) — 지문 대조로 어긋난 원본은 불러올 때 버려진다
+                await saveDraftValue(DRAFT_ORIGINALS_KEY, JSON.stringify(origs))
+                    .catch(err => console.warn('원본 임시저장 실패 (사진은 저장됨):', err));
             } else {
                 await clearDraftValue(DRAFT_IMAGES_KEY);
+                await clearDraftValue(DRAFT_ORIGINALS_KEY);
             }
+            touchDraft('magic_frame_collage_draft');
             setSavedToast(true);
             setTimeout(() => setSavedToast(false), 2000);
         } catch (e) {
@@ -833,7 +860,9 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         const blob = await renderCollage();
         if (blob) {
             localStorage.removeItem('magic_frame_collage_draft');
+            forgetDraft('magic_frame_collage_draft');
             clearDraftValue(DRAFT_IMAGES_KEY).catch(() => { });
+            clearDraftValue(DRAFT_ORIGINALS_KEY).catch(() => { });
             onFinalize(blob);
         }
     };

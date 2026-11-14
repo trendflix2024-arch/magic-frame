@@ -11,7 +11,7 @@ import {
     formatPickedDate,
     todayIso,
 } from './textPresets';
-import { saveDraftValue, loadDraftValue, clearDraftValue } from '@/lib/magic-frame-draft-storage';
+import { saveDraftValue, loadDraftValue, clearDraftValue, touchDraft, purgeExpiredDraft, forgetDraft } from '@/lib/magic-frame-draft-storage';
 import { ensureJpeg, isHeic } from '@/lib/heic-convert';
 
 const DRAFT_IMAGE_KEY = 'crop_image';
@@ -135,6 +135,8 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
     useEffect(() => {
         (async () => {
             try {
+                // 마지막 임시저장 후 30일 지났으면 지우고 빈 상태로 시작
+                await purgeExpiredDraft('magic_frame_crop_draft', [DRAFT_IMAGE_KEY]);
                 const saved = localStorage.getItem('magic_frame_crop_draft');
                 if (saved) {
                     const draft = JSON.parse(saved);
@@ -160,6 +162,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
             } else {
                 await clearDraftValue(DRAFT_IMAGE_KEY);
             }
+            touchDraft('magic_frame_crop_draft');
             setSavedToast(true);
             setTimeout(() => setSavedToast(false), 2000);
         } catch (e) {
@@ -216,6 +219,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
         setTexts([]);
         setSelectedTextId(null);
         localStorage.removeItem('magic_frame_crop_draft');
+        forgetDraft('magic_frame_crop_draft');
         clearDraftValue(DRAFT_IMAGE_KEY).catch(() => { });
     };
 
@@ -397,6 +401,7 @@ export function PhotoCropper({ onFinalize }: CropperProps) {
         const blob = await renderFinal();
         if (blob) {
             localStorage.removeItem('magic_frame_crop_draft');
+            forgetDraft('magic_frame_crop_draft');
             clearDraftValue(DRAFT_IMAGE_KEY).catch(() => { });
             onFinalize(blob);
         }
