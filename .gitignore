@@ -38,3 +38,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 관리 스크립트 백업 (고객 데이터 포함 — 커밋 금지)
+scripts/admin/backups/
+
+# 특정 고객 조회·수정용 일회성 스크립트 (고객 이름·전화번호·행번·ID 가 코드에 적혀 있음 — 커밋 금지)
+scripts/admin/find-customer.mjs
+scripts/admin/find-kang.mjs
+scripts/admin/find-two-users.mjs
+scripts/admin/inspect-waiting-with-photo.mjs
+scripts/admin/mark-shipped.mjs
