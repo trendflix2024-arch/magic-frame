@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
+
+const SOURCES_PATH = 'user-sources.json';
+
+async function removeSource(userId: string) {
+    try {
+        const { data } = await supabaseAdmin.storage.from('magic-frame').download(SOURCES_PATH);
+        if (!data) return;
+        const map: Record<string, string> = JSON.parse(await data.text());
+        if (!(userId in map)) return;
+        delete map[userId];
+        await supabaseAdmin.storage.from('magic-frame').upload(
+            SOURCES_PATH,
+            Buffer.from(JSON.stringify(map)),
+            { contentType: 'application/json', upsert: true }
+        );
+    } catch { /* non-critical */ }
+}
 
 // GET: List submitted users
 export async function GET(req: NextRequest) {
@@ -99,10 +117,10 @@ export async function DELETE(req: NextRequest) {
             .eq('id', userId)
             .single();
 
-        if (user) {
-            const filename = `${user.name}_${user.phone}.jpg`;
-            await supabase.storage.from('magic-frame').remove([filename]);
-        }
+        // 업로드는 `${userId}.jpg` 로 저장된다 (upload/route.ts). 예전 파일명(이름_전화번호.jpg)도 함께 지운다.
+        const files = [`${userId}.jpg`];
+        if (user) files.push(`${user.name}_${user.phone}.jpg`);
+        await supabaseAdmin.storage.from('magic-frame').remove(files);
 
         const { error } = await supabase
             .from('magic_frame_users')
@@ -112,6 +130,8 @@ export async function DELETE(req: NextRequest) {
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
+
+        await removeSource(userId);
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
