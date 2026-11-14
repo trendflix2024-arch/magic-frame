@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
+import { photoPathFromUrl } from '@/lib/magic-frame-photo-path';
 
 
 // GET: List submitted users
@@ -96,12 +97,14 @@ export async function DELETE(req: NextRequest) {
         // Get user info to delete storage file
         const { data: user } = await supabaseAdmin
             .from('magic_frame_users')
-            .select('name, phone')
+            .select('name, phone, image_url')
             .eq('id', userId)
             .single();
 
-        // 업로드는 `${userId}.jpg` 로 저장된다 (upload/route.ts). 예전 파일명(이름_전화번호.jpg)도 함께 지운다.
+        // 사진은 DB 에 저장된 주소의 경로로 지운다. 예전 형식(`${userId}.jpg`, 이름_전화번호.jpg)도 함께 지운다.
         const files = [`${userId}.jpg`];
+        const currentPath = photoPathFromUrl(user?.image_url);
+        if (currentPath && !files.includes(currentPath)) files.push(currentPath);
         if (user) files.push(`${user.name}_${user.phone}.jpg`);
         await supabaseAdmin.storage.from('magic-frame').remove(files);
 

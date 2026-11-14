@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { newPhotoPath, photoPathFromUrl } from '@/lib/magic-frame-photo-path';
 
 export async function POST(req: NextRequest) {
     try {
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
         // Get user info for filename
         const { data: user, error: userError } = await supabaseAdmin
             .from('magic_frame_users')
-            .select('name, phone, submitted, submitted_at')
+            .select('name, phone, submitted, submitted_at, image_url')
             .eq('id', userId)
             .single();
 
@@ -34,7 +35,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: '이미지 크기가 너무 큽니다. 다시 시도해 주세요.' }, { status: 400 });
         }
 
-        const filename = `${userId}.jpg`;
+        // 매 업로드마다 새 무작위 경로에 저장한다 (고객 ID 로 주소를 추측할 수 없게)
+        const filename = newPhotoPath(userId);
+        const previousPath = photoPathFromUrl((user as any).image_url);
 
         // Ensure bucket exists
         const { data: buckets } = await supabaseAdmin.storage.listBuckets();
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest) {
             .from('magic-frame')
             .upload(filename, buffer, {
                 contentType: 'image/jpeg',
-                upsert: true,
+                upsert: false,
             });
 
         if (uploadError) {
@@ -79,7 +82,15 @@ export async function POST(req: NextRequest) {
             .eq('id', userId);
 
         if (updateError) {
+            // DB 에 기록하지 못했으면 방금 올린 파일을 남기지 않는다
+            await supabaseAdmin.storage.from('magic-frame').remove([filename]);
             return NextResponse.json({ error: '데이터 업데이트에 실패했습니다.' }, { status: 500 });
+        }
+
+        // 재제출이면 이전 사진을 지운다 (예전 형식 `${userId}.jpg` 포함). 실패해도 제출은 성공으로 본다.
+        const stale = [previousPath, `${userId}.jpg`].filter((p): p is string => !!p && p !== filename);
+        if (stale.length) {
+            try { await supabaseAdmin.storage.from('magic-frame').remove(stale); } catch { /* non-critical */ }
         }
 
         return NextResponse.json({ success: true, imageUrl: publicUrl });
