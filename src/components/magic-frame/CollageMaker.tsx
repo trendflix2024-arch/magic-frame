@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Plus, X, Camera } from 'lucide-react';
+import { Plus, X, Crop, RefreshCw, Move } from 'lucide-react';
 import type { TextLayer } from './PhotoCropper';
 import { PhotoCropModal } from './PhotoCropModal';
 import {
@@ -269,6 +269,8 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
     const [pickedDate, setPickedDate] = useState<string>(() => todayIso());
     const [pendingCrop, setPendingCrop] = useState<{ src: string; index: number; aspect: number } | null>(null);
+    // 슬롯별 크롭 전 원본 (재편집 시 화질 손실 없이 다시 자르기 위함). 임시저장엔 포함 안 됨 → 없으면 현재 이미지로 편집.
+    const [originals, setOriginals] = useState<(string | null)[]>([]);
     const selectedText = texts.find(t => t.id === selectedTextId) ?? null;
     const textDragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
     const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -514,15 +516,80 @@ export function CollageMaker({ onFinalize }: CollageProps) {
         }
     }, [releaseScrollLock]);
 
+    // 두 슬롯의 사진 맞바꾸기 (b 가 빈 칸이면 이동)
+    const swapSlots = useCallback((a: number, b: number) => {
+        setImages(prev => { const n = [...prev]; [n[a], n[b]] = [n[b] ?? null, n[a] ?? null]; return n; });
+        // 칸 크기가 다르면 기존 pan 값이 새 칸 범위를 넘을 수 있어 재클램프 (미리보기·출력 불일치 방지)
+        const fit = (t: SlotTransform | undefined, idx: number): SlotTransform => {
+            const v = t ?? { ...DEFAULT_T };
+            return { ...v, ...clampPan(idx, v.x, v.y, v.zoom) };
+        };
+        setTransforms(prev => { const n = [...prev]; const ta = n[a], tb = n[b]; n[a] = fit(tb, a); n[b] = fit(ta, b); return n; });
+        setOriginals(prev => { const n = [...prev]; [n[a], n[b]] = [n[b] ?? null, n[a] ?? null]; return n; });
+    }, [clampPan]);
+
     const handleSwapClick = useCallback((i: number) => {
         if (!images[i]) return;
         if (swapFrom === null) { setSwapFrom(i); return; }
         if (swapFrom === i) { setSwapFrom(null); return; }
-        setImages(prev => { const n = [...prev]; [n[swapFrom], n[i]] = [n[i], n[swapFrom]]; return n; });
-        setTransforms(prev => { const n = [...prev]; [n[swapFrom], n[i]] = [n[i], n[swapFrom]]; return n; });
+        swapSlots(swapFrom, i);
         setSwapFrom(null);
         setSwapMode(false);
-    }, [images, swapFrom]);
+    }, [images, swapFrom, swapSlots]);
+
+    // '이동' 버튼을 끌어서 다른 칸에 놓으면 위치 교환(빈 칸이면 이동).
+    // 드래그 상태는 ref(진실) + state(렌더용) 로 분리하고, window 리스너로 받아 버튼이 사라져도 반드시 종료된다.
+    const [moveDrag, setMoveDrag] = useState<{ from: number; x: number; y: number; over: number | null; moved: boolean } | null>(null);
+    const moveRef = useRef<{ pointerId: number; from: number; sx: number; sy: number; moved: boolean } | null>(null);
+    const moveCleanupRef = useRef<(() => void) | null>(null);
+    useEffect(() => () => moveCleanupRef.current?.(), []);
+
+    // 좌표 → 슬롯 번호 (텍스트 레이어가 위에 있어도 찾도록 hit-test 대신 사각형 비교)
+    const slotAt = (x: number, y: number): number | null => {
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-slot]'))) {
+            const r = el.getBoundingClientRect();
+            if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return Number(el.dataset.slot);
+        }
+        return null;
+    };
+
+    const handleMoveDown = (e: React.PointerEvent, i: number) => {
+        e.stopPropagation();
+        if (e.button !== 0 || moveRef.current) return; // 우클릭·두 번째 손가락 무시
+        e.preventDefault();
+        const d = { pointerId: e.pointerId, from: i, sx: e.clientX, sy: e.clientY, moved: false };
+        moveRef.current = d;
+        setMoveDrag({ from: i, x: e.clientX, y: e.clientY, over: null, moved: false });
+        acquireScrollLock();
+
+        const onMove = (ev: PointerEvent) => {
+            if (ev.pointerId !== d.pointerId) return;
+            if (!d.moved && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) > 6) d.moved = true;
+            if (d.moved) setMoveDrag({ from: d.from, x: ev.clientX, y: ev.clientY, over: slotAt(ev.clientX, ev.clientY), moved: true });
+        };
+        const finish = (ev: PointerEvent) => {
+            if (ev.pointerId !== d.pointerId) return;
+            // pointercancel(시스템 제스처·전화 등)은 교환하지 않고 취소만
+            if (ev.type === 'pointerup' && d.moved) {
+                const over = slotAt(ev.clientX, ev.clientY);
+                if (over !== null && over !== d.from) swapSlots(d.from, over);
+            }
+            cleanup();
+        };
+        const cleanup = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', finish);
+            window.removeEventListener('pointercancel', finish);
+            moveCleanupRef.current = null;
+            moveRef.current = null;
+            setMoveDrag(null);
+            releaseScrollLock();
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', finish);
+        window.addEventListener('pointercancel', finish);
+        moveCleanupRef.current = cleanup;
+    };
 
     const handleLayoutChange = (newKey: string) => {
         setLayout(newKey);
@@ -549,6 +616,35 @@ export function CollageMaker({ onFinalize }: CollageProps) {
 
     const handleAddImage = (index: number) => fileRefs.current[index]?.click();
 
+    // 원본 보관용 축소: 출력 캔버스 최대 변(3200px)보다 큰 사진은 줄여서 메모리 절약 (9장 × 수 MB 원본 → iOS 탭 강제 종료 방지)
+    const downscaleDataUrl = (src: string, maxEdge: number) => new Promise<string>(resolve => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = maxEdge / Math.max(img.width, img.height);
+            if (scale >= 1) { resolve(src); return; }
+            const cv = document.createElement('canvas');
+            cv.width = Math.round(img.width * scale);
+            cv.height = Math.round(img.height * scale);
+            cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
+            resolve(cv.toDataURL('image/jpeg', 0.92));
+        };
+        img.onerror = () => resolve(src);
+        img.src = src;
+    });
+
+    const openCrop = (index: number, src: string) => {
+        const cell = currentLayout.cells[index];
+        if (!cell) return;
+        const aspect = (cell.w * previewW) / (cell.h * previewH);
+        setPendingCrop({ src, index, aspect });
+    };
+
+    // 이미 넣은 사진 다시 자르기 — 원본이 있으면 원본에서, 없으면(임시저장 복원 등) 현재 이미지에서
+    const handleEditImage = (index: number) => {
+        const src = originals[index] ?? images[index];
+        if (src) openCrop(index, src);
+    };
+
     const [converting, setConverting] = useState(false);
     const handleFileChange = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -558,15 +654,7 @@ export function CollageMaker({ onFinalize }: CollageProps) {
             if (isHeic(file)) setConverting(true);
             const blob = await ensureJpeg(file);
             const reader = new FileReader();
-            reader.onload = () => {
-                const src = reader.result as string;
-                const cell = currentLayout.cells[index];
-                if (!cell) return;
-                const cellW = cell.w * previewW;
-                const cellH = cell.h * previewH;
-                const aspect = cellW / cellH;
-                setPendingCrop({ src, index, aspect });
-            };
+            reader.onload = async () => openCrop(index, await downscaleDataUrl(reader.result as string, 3200));
             reader.readAsDataURL(blob);
         } catch (err) {
             console.error('HEIC 변환 실패:', err);
@@ -579,8 +667,10 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const handleCropApply = (croppedDataUrl: string) => {
         if (!pendingCrop) return;
         const i = pendingCrop.index;
+        const src = pendingCrop.src;
         setImages(prev => { const next = [...prev]; next[i] = croppedDataUrl; return next; });
         setTransforms(prev => { const next = [...prev]; next[i] = { ...DEFAULT_T }; return next; });
+        setOriginals(prev => { const next = [...prev]; next[i] = src; return next; });
         setPendingCrop(null);
     };
 
@@ -589,10 +679,12 @@ export function CollageMaker({ onFinalize }: CollageProps) {
     const removeImage = (index: number) => {
         setImages(prev => { const next = [...prev]; next[index] = null; return next; });
         setTransforms(prev => { const next = [...prev]; next[index] = { ...DEFAULT_T }; return next; });
+        setOriginals(prev => { const next = [...prev]; next[index] = null; return next; });
     };
 
     const reset = () => {
         setImages(Array(currentLayout.slots).fill(null));
+        setOriginals([]);
         setTransforms(Array(currentLayout.slots).fill(null).map(() => ({ ...DEFAULT_T })));
         setSpacing(0);
         setBgColor('#FFFFFF');
@@ -801,6 +893,8 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                             const t = transforms[i] ?? DEFAULT_T;
                             const isSwapSelected = swapMode && swapFrom === i;
                             const isSwapTarget = swapMode && swapFrom !== null && swapFrom !== i && !!img;
+                            const isDragSource = moveDrag?.moved && moveDrag.from === i;
+                            const isDropTarget = moveDrag?.moved && moveDrag.over === i && moveDrag.from !== i;
                             const cellStyle: React.CSSProperties = {
                                 position: 'absolute',
                                 left: c.x * previewW + spacing / 2,
@@ -813,8 +907,11 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                             return (
                                 <div
                                     key={i}
-                                    className={`border-2 border-dashed flex items-center justify-center group transition-all ${
-                                        isSwapSelected
+                                    data-slot={i}
+                                    className={`border-2 border-dashed flex items-center justify-center group transition-all ${isDragSource ? 'opacity-40' : ''} ${
+                                        isDropTarget
+                                            ? 'border-indigo-500 ring-4 ring-indigo-400'
+                                            : isSwapSelected
                                             ? 'border-amber-500 ring-2 ring-amber-400'
                                             : isSwapTarget
                                                 ? 'border-amber-300 ring-2 ring-amber-200 cursor-pointer'
@@ -861,26 +958,56 @@ export function CollageMaker({ onFinalize }: CollageProps) {
                                                     }}
                                                 />
                                             </div>
-                                            {/* 툴바 버튼 (교체 + 삭제) */}
-                                            {!swapMode && (
-                                                <div className="absolute top-1 right-1 flex gap-1 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={e => { e.stopPropagation(); handleAddImage(i); }}
-                                                        className="w-6 h-6 bg-black/60 rounded-full flex items-center justify-center"
+                                            {/* 툴바 버튼 (이동 + 수정 + 교체 + 삭제).
+                                                넓고 높은 칸: 아이콘+글자 / 보통: 아이콘만 / 아주 좁은 칸: 2×2 로 접어 버튼이 잘리지 않게.
+                                                hover 가능한 기기(마우스)에서만 평소 숨김 — 터치 태블릿·가로폰에선 항상 보임(투명 버튼 오터치 방지). */}
+                                            {!swapMode && (() => {
+                                                const cw = c.w * previewW - spacing;
+                                                const ch = c.h * previewH - spacing;
+                                                const showLabel = cw >= 110 && ch >= 120;
+                                                const twoRows = cw < 100;
+                                                const btnCls = `flex flex-col items-center justify-center text-white font-bold active:bg-black/40 ${twoRows ? 'h-6' : 'flex-1'} ${showLabel ? 'h-9 text-[10px] leading-none gap-0.5' : twoRows ? '' : 'h-7'}`;
+                                                const actions = [
+                                                    { label: '수정', aria: '사진 수정 (다시 자르기)', Icon: Crop, run: () => handleEditImage(i) },
+                                                    { label: '교체', aria: '사진 교체', Icon: RefreshCw, run: () => handleAddImage(i) },
+                                                    { label: '삭제', aria: '사진 삭제', Icon: X, run: () => removeImage(i) },
+                                                ];
+                                                return (
+                                                    <div
+                                                        className={`absolute bottom-0 inset-x-0 z-10 bg-black/55 select-none transition-opacity ${twoRows ? 'grid grid-cols-2' : 'flex divide-x divide-white/20'} ${moveDrag?.from === i ? 'opacity-100' : 'opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100'}`}
+                                                        style={{ paddingInline: Math.min(cornerRadius * 0.3, 12), WebkitTouchCallout: 'none' } as React.CSSProperties}
                                                     >
-                                                        <Camera size={10} className="text-white" />
-                                                    </button>
-                                                    <button
-                                                        onClick={e => { e.stopPropagation(); removeImage(i); }}
-                                                        className="w-6 h-6 bg-black/60 rounded-full flex items-center justify-center"
-                                                    >
-                                                        <X size={10} className="text-white" />
-                                                    </button>
-                                                </div>
-                                            )}
+                                                        <button
+                                                            onClick={e => e.stopPropagation()}
+                                                            onPointerDown={e => handleMoveDown(e, i)}
+                                                            onContextMenu={e => e.preventDefault()}
+                                                            title="사진 이동 (끌어서 다른 칸에 놓기)"
+                                                            aria-label="사진 이동"
+                                                            className={`${btnCls} cursor-grab active:cursor-grabbing`}
+                                                            style={{ touchAction: 'none' }}
+                                                        >
+                                                            <Move size={12} />
+                                                            {showLabel && <span>이동</span>}
+                                                        </button>
+                                                        {actions.map(({ label, aria, Icon, run }) => (
+                                                            <button
+                                                                key={label}
+                                                                onClick={e => { e.stopPropagation(); run(); }}
+                                                                onPointerDown={e => e.stopPropagation()}
+                                                                title={aria}
+                                                                aria-label={aria}
+                                                                className={btnCls}
+                                                            >
+                                                                <Icon size={12} />
+                                                                {showLabel && <span>{label}</span>}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
                                             {/* zoom 인디케이터 */}
                                             {!swapMode && t.zoom > 1.05 && (
-                                                <div className="absolute bottom-1 left-1 z-10 bg-black/50 text-white text-xs font-bold rounded px-1 py-0.5 pointer-events-none">
+                                                <div className="absolute top-1 left-1 z-10 bg-black/50 text-white text-xs font-bold rounded px-1 py-0.5 pointer-events-none">
                                                     {Math.round(t.zoom * 100)}%
                                                 </div>
                                             )}
@@ -938,6 +1065,16 @@ export function CollageMaker({ onFinalize }: CollageProps) {
             </div>
 
             <TabbedControls {...controlsProps} />
+
+            {/* 이동 드래그 중 손가락을 따라다니는 썸네일 */}
+            {moveDrag?.moved && slotImages[moveDrag.from] && (
+                <img
+                    src={slotImages[moveDrag.from]!}
+                    alt=""
+                    className="fixed z-50 w-16 h-16 object-cover rounded-lg shadow-xl ring-2 ring-white opacity-80 pointer-events-none"
+                    style={{ left: moveDrag.x - 32, top: moveDrag.y - 32 }}
+                />
+            )}
 
             {pendingCrop && (
                 <PhotoCropModal

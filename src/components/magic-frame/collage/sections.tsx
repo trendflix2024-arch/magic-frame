@@ -294,7 +294,7 @@ export function ActionsSection({ hasAnyImage, swapMode, toggleSwap, swappableCou
             </button>
             <button
                 onClick={toggleSwap}
-                disabled={swappableCount < 2}
+                disabled={!swapMode && swappableCount < 2}
                 className={`w-full py-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-40 ${
                     swapMode
                         ? 'bg-amber-500 text-white border-amber-500'
