@@ -28,7 +28,7 @@ export function useMagicFrameAuth(requireAuth = true) {
 
     useEffect(() => {
         if (!loading && requireAuth && !session) {
-            router.replace('/magic-frame/login');
+            router.replace('/magic-frame/market-login');
         }
     }, [loading, session, requireAuth, router]);
 

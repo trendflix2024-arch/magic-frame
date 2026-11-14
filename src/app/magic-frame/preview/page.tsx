@@ -184,7 +184,7 @@ export default function MagicFramePreviewPage() {
 
                             <div className="space-y-2">
                                 <Link
-                                    href="/magic-frame/login"
+                                    href="/magic-frame/market-login"
                                     className="flex items-center justify-center gap-2 w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-base rounded-xl shadow-lg shadow-indigo-300/50 active:scale-[0.98] transition-transform"
                                 >
                                     <Sparkles size={16} className="text-white/90" />

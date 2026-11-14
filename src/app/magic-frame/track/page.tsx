@@ -92,7 +92,7 @@ export default function TrackPage() {
         }
 
         if (!name || (!haengbun && !phone)) {
-            router.replace("/magic-frame/login");
+            router.replace("/magic-frame/market-login");
             return;
         }
 
@@ -151,7 +151,7 @@ export default function TrackPage() {
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100 p-4">
                 <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-sm w-full">
                     <p className="text-slate-500 mb-4">{error}</p>
-                    <button onClick={() => router.push("/magic-frame/login")}
+                    <button onClick={() => router.push("/magic-frame/market-login")}
                         className="text-indigo-600 font-medium text-sm hover:underline">
                         ← 돌아가기
                     </button>
@@ -168,7 +168,7 @@ export default function TrackPage() {
                     <Clock size={40} className="text-slate-300 mx-auto mb-3" />
                     <h2 className="text-lg font-bold text-slate-800 mb-2">아직 사진이 접수되지 않았습니다</h2>
                     <p className="text-sm text-slate-400 mb-4">사진을 제출하시면 주문 현황을 확인하실 수 있습니다.</p>
-                    <button onClick={() => router.push("/magic-frame/login")}
+                    <button onClick={() => router.push("/magic-frame/market-login")}
                         className="text-indigo-600 font-medium text-sm hover:underline">
                         ← 돌아가기
                     </button>
@@ -186,7 +186,7 @@ export default function TrackPage() {
 
                 {/* Header */}
                 <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-                    <button onClick={() => router.push("/magic-frame/login")}
+                    <button onClick={() => router.push("/magic-frame/market-login")}
                         className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 mb-4">
                         <ArrowLeft size={14} /> 처음으로
                     </button>

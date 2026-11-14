@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { AdminLoginForm } from "@/components/magic-frame/admin/AdminLoginForm";
 import { ShieldAlert, RefreshCw, Loader2, ClipboardList, Package, Youtube, ImageIcon } from "lucide-react";
 import { OrdersTab } from "@/components/magic-frame/admin/OrdersTab";
 import { ProductsTab } from "@/components/magic-frame/admin/ProductsTab";
@@ -14,7 +14,6 @@ const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map
 
 export default function MagicFrameAdminPage() {
     const { data: session, status } = useSession();
-    const router = useRouter();
     const [tab, setTab] = useState<"orders" | "products" | "gallery" | "youtube">("orders");
     const [refreshKey, setRefreshKey] = useState(0);
     const [sessionAdmin, setSessionAdmin] = useState(false);
@@ -38,8 +37,7 @@ export default function MagicFrameAdminPage() {
     }
 
     if (!isAdmin) {
-        router.replace("/magic-frame/login");
-        return null;
+        return <AdminLoginForm onSuccess={() => setSessionAdmin(true)} />;
     }
 
     return (

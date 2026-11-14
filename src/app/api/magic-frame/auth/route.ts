@@ -24,7 +24,7 @@ async function recordSource(userId: string, source: string) {
 
 export async function POST(req: NextRequest) {
     try {
-        const { name, haengbun, phone, source = 'gajeong' } = await req.json();
+        const { name, haengbun, phone, source = 'gajeong', adminOnly = false } = await req.json();
         const cleanName = name?.trim() || '';
 
         if (!cleanName) {
@@ -87,6 +87,11 @@ export async function POST(req: NextRequest) {
         // Check admin credentials (ADMIN_PHONE env var serves as the admin's haengbun)
         if (ADMIN_NAME && ADMIN_PHONE && cleanName === ADMIN_NAME && cleanHaengbun === ADMIN_PHONE) {
             return NextResponse.json({ isAdmin: true, adminToken: ADMIN_TOKEN });
+        }
+
+        // 관리자 로그인 폼에서 온 요청은 고객 조회로 넘어가지 않는다
+        if (adminOnly) {
+            return NextResponse.json({ error: '관리자 정보가 올바르지 않습니다.' }, { status: 401 });
         }
 
         // Check if user exists by name + haengbun

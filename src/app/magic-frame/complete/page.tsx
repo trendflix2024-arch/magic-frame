@@ -43,7 +43,7 @@ export default function MagicFrameComplete() {
 
     const handleProductPurchase = async (product: typeof MAGIC_FRAME_PRODUCTS[0]) => {
         if (!session) {
-            router.push('/magic-frame/login');
+            router.push('/magic-frame/market-login');
             return;
         }
 
