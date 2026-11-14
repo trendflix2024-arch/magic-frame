@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isMarketSource } from '@/lib/magic-frame-sources';
 
@@ -34,7 +33,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: '올바른 연락처를 입력해 주세요.' }, { status: 400 });
             }
 
-            const { data: existing } = await supabase
+            const { data: existing } = await supabaseAdmin
                 .from('magic_frame_users')
                 .select('id, submitted, updated_at')
                 .eq('name', cleanName)

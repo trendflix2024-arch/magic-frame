@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
 
@@ -13,7 +13,7 @@ function isAdmin(email: string | null | undefined) {
 // GET: 갤러리 이미지 목록 (누구나 접근 가능)
 export async function GET() {
     try {
-        const { data: files, error } = await supabase.storage
+        const { data: files, error } = await supabaseAdmin.storage
             .from('magic-frame')
             .list('gallery', { sortBy: { column: 'created_at', order: 'desc' } });
 
@@ -24,7 +24,7 @@ export async function GET() {
         const images = (files || [])
             .filter(f => f.name && !f.name.startsWith('.'))
             .map(f => {
-                const { data } = supabase.storage.from('magic-frame').getPublicUrl(`gallery/${f.name}`);
+                const { data } = supabaseAdmin.storage.from('magic-frame').getPublicUrl(`gallery/${f.name}`);
                 return {
                     name: f.name,
                     url: data.publicUrl,
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         const safeName = `${Date.now()}_${(filename || 'image').replace(/[^a-zA-Z0-9가-힣._-]/g, '')}`;
         const filePath = `gallery/${safeName}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabaseAdmin.storage
             .from('magic-frame')
             .upload(filePath, buffer, { contentType: 'image/jpeg', upsert: false });
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: uploadError.message }, { status: 500 });
         }
 
-        const { data: urlData } = supabase.storage.from('magic-frame').getPublicUrl(filePath);
+        const { data: urlData } = supabaseAdmin.storage.from('magic-frame').getPublicUrl(filePath);
 
         return NextResponse.json({ success: true, url: urlData.publicUrl, name: safeName });
     } catch (e: any) {
@@ -92,7 +92,7 @@ export async function DELETE(req: NextRequest) {
         }
 
         const paths = names.map(n => `gallery/${n}`);
-        const { error } = await supabase.storage
+        const { error } = await supabaseAdmin.storage
             .from('magic-frame')
             .remove(paths);
 

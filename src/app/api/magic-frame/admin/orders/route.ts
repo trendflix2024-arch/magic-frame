@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
 
 // GET: 주문 목록
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const status = url.searchParams.get('status') || '';
     const sort = url.searchParams.get('sort') || 'recent';
 
-    let query = supabase
+    let query = supabaseAdmin
         .from('magic_frame_orders')
         .select('*');
 
@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest) {
             return NextResponse.json({ error: '올바르지 않은 상태입니다.' }, { status: 400 });
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
             .from('magic_frame_orders')
             .update({ status, updated_at: new Date().toISOString() })
             .eq('id', orderId);

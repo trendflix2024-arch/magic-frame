@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkAdminAuth } from '@/lib/admin-auth';
 
@@ -14,7 +13,7 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get('search') || '';
     const sort = url.searchParams.get('sort') || 'recent'; // recent | name
 
-    let query = supabase
+    let query = supabaseAdmin
         .from('magic_frame_users')
         .select('id, name, phone, submitted, image_url, image_type, updated_at, created_at');
 
@@ -50,7 +49,7 @@ export async function PATCH(req: NextRequest) {
         }
 
         // Check shipping status — only allow reset at 사진접수(pending) stage
-        const { data: user, error: fetchError } = await supabase
+        const { data: user, error: fetchError } = await supabaseAdmin
             .from('magic_frame_users')
             .select('submitted, shipping_status')
             .eq('id', userId)
@@ -64,7 +63,7 @@ export async function PATCH(req: NextRequest) {
             return NextResponse.json({ error: '제작중 이후 단계에서는 재제출을 허용할 수 없습니다.' }, { status: 400 });
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
             .from('magic_frame_users')
             .update({
                 submitted: false,
@@ -95,7 +94,7 @@ export async function DELETE(req: NextRequest) {
         }
 
         // Get user info to delete storage file
-        const { data: user } = await supabase
+        const { data: user } = await supabaseAdmin
             .from('magic_frame_users')
             .select('name, phone')
             .eq('id', userId)
@@ -106,7 +105,7 @@ export async function DELETE(req: NextRequest) {
         if (user) files.push(`${user.name}_${user.phone}.jpg`);
         await supabaseAdmin.storage.from('magic-frame').remove(files);
 
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
             .from('magic_frame_users')
             .delete()
             .eq('id', userId);
