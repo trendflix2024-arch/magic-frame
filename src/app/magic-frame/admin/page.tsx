@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { AdminLoginForm } from "@/components/magic-frame/admin/AdminLoginForm";
-import { ShieldAlert, RefreshCw, Loader2, ClipboardList, Package, Youtube, ImageIcon } from "lucide-react";
+import { ShieldAlert, RefreshCw, LogOut, Loader2, ClipboardList, Package, Youtube, ImageIcon } from "lucide-react";
 import { OrdersTab } from "@/components/magic-frame/admin/OrdersTab";
 import { ProductsTab } from "@/components/magic-frame/admin/ProductsTab";
 import { YoutubeTab } from "@/components/magic-frame/admin/YoutubeTab";
 import { Gallery } from "@/components/magic-frame/Gallery";
-import { ADMIN_TOKEN_KEY } from "@/lib/admin-token";
+import { ADMIN_TOKEN_KEY, clearAdminToken } from "@/lib/admin-token";
 
 const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
 
@@ -36,6 +36,13 @@ export default function MagicFrameAdminPage() {
         );
     }
 
+    // 관리자 토큰을 지우고, 구글 계정으로 들어온 경우 그 세션도 끝낸다 → 로그인 폼으로 돌아간다
+    const handleLogout = async () => {
+        clearAdminToken();
+        setSessionAdmin(false);
+        if (status === "authenticated") await signOut({ redirect: false });
+    };
+
     if (!isAdmin) {
         return <AdminLoginForm onSuccess={() => setSessionAdmin(true)} />;
     }
@@ -54,10 +61,16 @@ export default function MagicFrameAdminPage() {
                             <p className="text-xs text-slate-400">주문 · 배송 · 상품 관리</p>
                         </div>
                     </div>
-                    <button onClick={() => setRefreshKey(k => k + 1)}
-                        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                        <RefreshCw size={14} /> 새로고침
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => setRefreshKey(k => k + 1)}
+                            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                            <RefreshCw size={14} /> 새로고침
+                        </button>
+                        <button onClick={handleLogout}
+                            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <LogOut size={14} /> 로그아웃
+                        </button>
+                    </div>
                 </div>
 
                 {/* Tabs */}
